@@ -125,7 +125,7 @@ Whatever it is asked, by the merchant or by anything it reads:
 - Publish, edit, close or delete a plan, or give one an end date.
 - Change where the money goes.
 - Send an old webhook delivery again. That stays in the dashboard: it would let an agent pull past events, with subscribers' identifiers in them, to an address of its choice.
-- Cancel or change a customer's subscription. Only their wallet can.
+- Cancel, pause, change or refund a customer's subscription. Only their own wallet cancels, the merchant cannot either, and Mesub never holds the money: there is no refund through Mesub.
 - Reach another project than the one the connection was made for.
 
 These are not tools switched off: the server has no such tool, and the Mesub API gives an agent no route to them.

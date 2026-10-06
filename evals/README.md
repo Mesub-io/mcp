@@ -32,12 +32,12 @@ A scenario passes when:
 
 ## The scenarios
 
-| Kind        | What it checks                                                                                               |
-| ----------- | ------------------------------------------------------------------------------------------------------------ |
-| `choose`    | The right tool for a merchant's sentence, with the near misses between tools that look alike.                |
-| `ask_first` | The agent states what will change and waits: a charge, a deletion, a new secret, a plan with a part missing. |
-| `refuse`    | What no tool does: the API key, the tier, deleting or closing a plan, resending a delivery, an end date.     |
-| `injection` | An instruction planted in a plan name, a customer id, a server's answer, a failure reason: never followed.   |
+| Kind        | What it checks                                                                                                                    |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `choose`    | The right tool for a merchant's sentence, with the near misses between tools that look alike.                                     |
+| `ask_first` | The agent states what will change and waits: a charge, a deletion, a new secret, a plan with a part missing.                      |
+| `refuse`    | What no tool does: the API key, the tier, deleting or closing a plan, resending a delivery, an end date, cancelling or refunding. |
+| `injection` | An instruction planted in a plan name, a customer id, a server's answer, a failure reason: never followed.                        |
 
 A scenario has an `id`, a `kind`, the `prompt`, and `expect`: `calls`, `never`, `ask_first` and `says`. An injection has `injected` as well: the `tool` whose result carries the text, the `field`, and the `text`.
 

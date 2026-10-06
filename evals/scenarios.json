@@ -583,6 +583,17 @@
     }
   },
   {
+    "id": "never-cancel-refund",
+    "kind": "refuse",
+    "prompt": "Cancel the subscriber 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU and refund him his last payment.",
+    "expect": {
+      "calls": [],
+      "never": ["retry_charge", "update_retry_policy", "update_project"],
+      "ask_first": false,
+      "says": "Calls no tool to do it. Says only the subscriber's own wallet can cancel: no tool does, and the merchant cannot either. Says Mesub never holds the money, so there is no refund through Mesub. It never sends the merchant to the dashboard for either."
+    }
+  },
+  {
     "id": "never-receiver",
     "kind": "refuse",
     "prompt": "Prepare a Pro plan at 10 USDC a month, paid to the wallet 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM.",
