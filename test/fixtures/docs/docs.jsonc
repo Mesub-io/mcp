@@ -1,0 +1,24 @@
+{
+  // A comment, next to a URL that holds two slashes.
+  "$schema": "https://example.com/docs.json",
+  "name": "Fixture - Docs",
+  /* A block comment. */
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guides",
+        "groups": [{ "group": "Start", "pages": ["index", "docs/guide"] }]
+      },
+      {
+        "tab": "API reference",
+        "groups": [
+          {
+            "group": "Endpoints",
+            // Nested groups, and trailing commas.
+            "pages": [{ "group": "Things", "pages": ["reference/things/check",] }],
+          },
+        ]
+      }
+    ]
+  }
+}

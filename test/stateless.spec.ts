@@ -52,7 +52,7 @@ describe('statelessness', () => {
         const three = await client.callTool({ name: 'ping', arguments: {} });
         await client.close();
 
-        expect(tools.map((tool) => tool.name)).toEqual(['ping']);
+        expect(tools.map((tool) => tool.name)).toEqual(['ping', 'search_docs']);
         for (const result of [one, two, three]) {
             expect(result.isError).toBeFalsy();
             expect(result.structuredContent).toEqual({ status: 'ok', uptime_seconds: 42 });

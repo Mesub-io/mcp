@@ -1,0 +1,69 @@
+---
+$schema: https://example.com/frontmatter.json
+title: "Handle webhooks on your server"
+sidebarTitle: Webhooks
+description: "Register an endpoint, then verify each delivery."
+icon: "lucide:webhook"
+prompt: |
+  Document webhooks from the SDK.
+  title: "not the title"
+---
+
+import { Lifecycle } from '../components/lifecycle'
+
+`hasAccess` is enough to gate a route. Webhooks are for **reacting** when
+something changes: see the [lifecycle](./lifecycle.mdx#late-payments) and
+`Bearer <API key>`.
+
+<Lifecycle />
+
+## Usage
+
+Put the signing secret in your environment:
+
+```bash
+MESUB_WEBHOOK_SECRET=whsec_...
+```
+
+<CodeGroup>
+
+```ts Express
+import express from 'express';
+## not a heading
+const page = <Tag>kept</Tag>;
+export const handler = async () => mesub.webhooks.verify(body, headers);
+```
+
+</CodeGroup>
+
+## Events
+
+| Event                           | Sent when                 |
+| ------------------------------- | ------------------------- |
+| `subscription.renewal_upcoming` | A renewal is near         |
+| `subscription.ended`            | It is over, `plan_ended`  |
+
+<Expandable title="See a full event">
+
+```json
+{ "type": "subscription.renewed" }
+```
+
+</Expandable>
+
+### Usage
+
+1. Open the dashboard and copy
+   the URL.
+2. Click **Send test**.
+
+- A first point
+- A second point
+
+## At a plan's end
+
+Nothing is charged.
+
+## A custom anchor {#my-id}
+
+Named by hand.

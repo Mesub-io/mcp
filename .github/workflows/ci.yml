@@ -43,3 +43,19 @@ jobs:
       - run: pnpm format:check
       - run: pnpm test
       - run: pnpm build
+
+  docs-index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    name: docs index
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      # The committed index must be what its own docs commit builds: it fetches
+      # that commit of Mesub-io/docs, which is public, and needs no dependency.
+      - run: node scripts/build-docs-index.mjs --check

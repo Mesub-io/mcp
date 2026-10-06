@@ -1,0 +1,72 @@
+{
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/things/{id}": {
+      "get": {
+        "operationId": "checkThing",
+        "summary": "Check thing",
+        "x-mesub": { "limit": "100 calls a minute per API key" },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The thing's id.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "expand",
+            "in": "query",
+            "description": "What to add to the answer, see [the guide](/docs/guide).",
+            "schema": { "type": "string", "enum": ["owner", "history"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The thing.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Thing" } }
+            }
+          },
+          "404": {
+            "description": "No such thing.",
+            "x-codes": [
+              { "code": "thing_not_found", "when": "No thing under that id.", "retryable": false },
+              { "code": "thing_busy", "when": "It is being changed.", "retryable": true }
+            ],
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": { "code": { "type": "string", "description": "What a program reads." } }
+      },
+      "Owner": {
+        "type": "object",
+        "description": "Who holds the thing.",
+        "properties": { "secret_name": { "type": "string", "description": "Not expanded." } }
+      },
+      "Thing": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "The thing's id." },
+          "owner": { "$ref": "#/components/schemas/Owner" },
+          "detail": {
+            "type": "object",
+            "description": "The thing's own fields.",
+            "properties": {
+              "can_pay": { "type": "boolean", "description": "Whether it can pay." }
+            }
+          }
+        }
+      }
+    }
+  }
+}

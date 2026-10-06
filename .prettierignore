@@ -2,3 +2,7 @@ dist
 coverage
 pnpm-lock.yaml
 LICENSE
+# Written by scripts/build-docs-index.mjs, one section per line.
+src/docs/index.json
+# A docs tree as the docs repository writes one.
+test/fixtures
