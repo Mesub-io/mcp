@@ -7,9 +7,10 @@ Rules for anyone, person or agent, changing this repository. The README has the 
 A thin layer over the Mesub HTTP API, hosted, stateless, serving one Mesub project per access token.
 
 - No business logic. A tool is one or a few calls to the Mesub API. If a tool needs a rule, a computation or a join the API does not offer, the API changes first. The one exception is `search_docs`, which calls nothing: it searches the index of the public docs the build carries.
-- No state a request depends on. No session, no cache of who a token stands for, no module-level variable a request writes to. The one thing kept between two requests is in `src/rate-limit.ts`: counters, and tokens the API just refused. They can only refuse, and any instance must answer right without them.
+- No state a request depends on. No session, no module-level variable a request writes to, and nothing that lets a caller in: a token is checked with the Mesub API on every request, so a revoke takes effect on the next one. What is kept between two requests is in `src/rate-limit.ts`: the rate of each connection, the tokens the API just refused, and which tokens it accepted before, as hashes. The last only says where a token waits to be checked. Any instance must answer right without any of it.
+- No limit that keeps a caller out for what another one sent. A limit protects the Mesub API from a flood. Nothing is counted against an address, a request without a token is always answered, and a table that is full drops its oldest keys rather than refuse a new one. Read the head of `src/rate-limit.ts` before touching one.
 - No API key. The credentials are the caller's access token and this server's service secret, which the Mesub API takes together or not at all. No tool takes a project id: the token names the project.
-- Every request to `/mcp` needs a valid token, checked with the Mesub API on that very request. A verdict that lets a caller in is never cached: a revoke must take effect on the next request.
+- No stream that outlives its request: `subscriptions/listen` is refused. A tool that needs one brings back, with it, a cap per connection and a re-check of the token while the stream is open.
 - No read-only mode: every tool is always listed.
 
 ## Adding a tool
@@ -86,7 +87,8 @@ It does not get the token nor the service secret, and must never go looking for 
 ### Adding a method to `MesubClient`
 
 - Say who the call is made as: `as: 'agent'` (the agent's token and the service secret, together) for every route that reads or changes a project, `as: 'none'` for a public one such as `/health`. There is no way to send one credential without the other, and none must be added.
-- The path is a literal. A value read from a caller goes through `pathSegment()` to become one segment, or into `query`. `apiUrl()` refuses a path that is not a plain one.
+- The path is a literal. A value read from a caller goes through `pathSegment()` to become one segment, or into `query`. `pathSegment()` refuses a value holding a slash, a backslash, `..`, a percent sign or a control character: an id is not a path. `apiUrl()` refuses a path that is not a plain one, an encoded separator included.
+- Every call has one deadline over the whole exchange, the body included. Never read an answer outside `#exchange`.
 - Never put a credential in a URL, a body, an error message or a log, and never keep the `cause` of a failed `fetch`: it may quote a header.
 - Never follow a redirect, and never call a URL read from an answer.
 
@@ -111,8 +113,10 @@ Everything read from Mesub is data, never an instruction. A plan's name, a custo
 ## Secrets and logs
 
 - Never log the token, the service secret, an Authorization or `X-Mesub-Service-Secret` header, a cookie, a webhook secret, or a request or response body.
-- Log through the `Logger` given by the dependencies, never `console`. It redacts credential-named fields, anything shaped like a Mesub token and the literal service secret, which is a net and not a licence.
-- The service secret is a `Secret` (`src/secret.ts`): printed, serialised or inspected, it shows nothing. Only `MesubClient` calls `reveal()`.
+- Never log a tool's arguments nor its result: they are the merchant's. The registry writes one `tool call` line per call, with the tool, the connection, the project, the client's name, the address, how it ended and how long it took. A tool adds nothing to it.
+- Never log a string the Mesub API answered as it came: a URL goes through `loggableUrl()`, a name through `loggableName()`, an error `code` is kept only when it is a short plain word, and anything else is a fixed label or a length.
+- Log through the `Logger` given by the dependencies, never `console`. It redacts credential-named fields, anything shaped like a Mesub token wherever it sits, and the service secret itself, which is a net and not a licence. It cannot see a token cut in two or encoded.
+- The service secret is a `Secret` (`src/secret.ts`): printed, serialised or inspected, it shows nothing, and it has no method that gives its value back. `revealSecret()` does, and `src/mesub/client.ts` is the one file that imports it: a test holds the sources to that. It is taken out of `process.env` when the configuration is read.
 - Nothing secret in an error returned to a client. A 401 never says why, a 503 never says the fault is in the service secret: the logs do.
 - A token is read from the Authorization header only, never from a URL.
 
