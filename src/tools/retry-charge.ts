@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
-import { DATA_NOTICE, plural } from '../text.js';
+import { SUBSCRIPTION_STATUSES } from '../mesub/schemas.js';
+import { DATA_NOTICE, known, plural } from '../text.js';
 import { idInput } from './inputs.js';
 import { subscriptionOut, subscriptionOutput } from './shapes.js';
 import { defineTool } from './tool.js';
@@ -14,7 +15,9 @@ export const retryCharge = defineTool({
         "the merchant's, on chain, and cannot be taken back from here. Ask the merchant, " +
         'naming the subscription, before every call, and never call it in a loop over a ' +
         'list. It works only on a subscription that is behind on its payment (status ' +
-        'UNPAID) and not paused: read `retry_available_at` with `get_subscription` first. ' +
+        'UNPAID) and not paused. Its `retry_available_at` says when a retry is allowed, ' +
+        'and a row of `list_subscriptions` is enough to know it; `get_subscription` adds the ' +
+        'price to quote, the charges it ran and why they failed. ' +
         'Mesub limits retries by hand: a wait between two, which the refusal states ' +
         '("Try again in N minutes"), and on the Free tier three per missed period. A ' +
         'refusal means nothing was charged. The charge is queued, not settled: read ' +
@@ -40,7 +43,7 @@ export const retryCharge = defineTool({
             data: { subscription },
             text:
                 'The charge was queued for a new try: it is not settled yet. The subscription ' +
-                `is ${subscription.status}, with ` +
+                `is ${known(subscription.status, SUBSCRIPTION_STATUSES)}, with ` +
                 `${plural(subscription.failed_pulls, 'failed charge')} on the current period. ` +
                 `Read it again with get_subscription for the outcome. ${DATA_NOTICE}`,
         };

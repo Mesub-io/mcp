@@ -25,6 +25,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "readme:tools": "README_WRITE=1 vitest run test/readme.spec.ts",
     "docs:index": "node scripts/build-docs-index.mjs",
     "docs:check": "node scripts/build-docs-index.mjs --check",
     "docs:stale": "node scripts/build-docs-index.mjs --stale",

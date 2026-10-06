@@ -1,5 +1,6 @@
 import * as z from 'zod';
 
+import { PLAN_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, plural, tally } from '../text.js';
 import { capped, fit, MAX_LIST_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
@@ -14,7 +15,9 @@ export const listPlans = defineTool({
         'what each one charges and how often, in which token, how many subscribers it has ' +
         'and what it collected this period. Use it to find a plan, its id or its slug, or to ' +
         'compare plans. For one plan with its failed charges and latest attempts use ' +
-        '`get_plan` with its id. It does not create or edit a plan. Every amount comes with ' +
+        '`get_plan` with its id. It does not create or edit a plan: `prepare_plan` prepares ' +
+        'one for the merchant to sign, and a plan it prepared shows here as PENDING until ' +
+        'they do. Every amount comes with ' +
         'a display value such as "9.99 USDC": quote that one, never convert the raw amount ' +
         'yourself. Changes nothing.',
     inputSchema: z.strictObject({}),
@@ -68,7 +71,10 @@ export const listPlans = defineTool({
             text:
                 all.length === 0
                     ? 'The project has no plan yet.'
-                    : `${plural(all.length, 'plan')}: ${tally(all.map((plan) => plan.status))}.` +
+                    : `${plural(all.length, 'plan')}: ${tally(
+                          all.map((plan) => plan.status),
+                          PLAN_STATUSES,
+                      )}.` +
                       (data.truncated ? ` Only the newest ${plans.length} are returned.` : '') +
                       ` ${DATA_NOTICE}`,
         };

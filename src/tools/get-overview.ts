@@ -5,6 +5,7 @@ import { DATA_NOTICE, plural } from '../text.js';
 import { planFilter } from './inputs.js';
 import { capped, MAX_LIST_ITEMS, MAX_NESTED_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
+import { reason, reasonLabel, state, symbol } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -15,7 +16,13 @@ const totals = z.object({
     pulls_settled: z.number().describe('Charges paid.'),
     pulls_failed: z.number(),
     pulls_retried: z.number(),
-    retry_to_come: z.number().describe('Failed charges a retry is still scheduled for.'),
+    retry_to_come: z
+        .number()
+        .describe(
+            'Failed charges that can still be retried: by Mesub on its own when ' +
+                "`retries_automatic` is true, by the merchant's hand (`retry_charge`) when it " +
+                'is false.',
+        ),
     recovered: z.number().describe('Failed charges a retry paid since.'),
     not_collected: z.number().describe('Failed charges given up on.'),
     unpriced: z
@@ -45,6 +52,13 @@ export const getOverview = defineTool({
     outputSchema: z.object({
         overview: z.object({
             days: z.number(),
+            retries_automatic: z
+                .boolean()
+                .nullable()
+                .describe(
+                    "Whether the project's tier retries a failed charge by itself. False: " +
+                        'nothing is retried by itself, and no retry is pending. Null: not known.',
+                ),
             totals: z
                 .object({ current: totals, previous: totals })
                 .describe('The window, and the one of the same length before it.'),
@@ -71,7 +85,9 @@ export const getOverview = defineTool({
                     .string()
                     .describe('What the charged subscriptions bring over a window this long.'),
                 upcoming: z.object({ count: z.number(), amount_usd: z.string() }),
-                late: z.number().describe('Subscriptions with a payment missed, still retried.'),
+                late: z
+                    .number()
+                    .describe('Subscriptions with a payment missed, a retry still possible.'),
                 stopped: z.number().describe('Subscriptions out of retries, no longer charged.'),
             }),
             next_up: z
@@ -89,6 +105,7 @@ export const getOverview = defineTool({
                             .string()
                             .describe('As a person reads it. Quote this one.'),
                         mint: z.string(),
+                        symbol,
                         decimals: z.number().nullable(),
                         amount_usd: z.string().nullable(),
                     }),
@@ -116,12 +133,12 @@ export const getOverview = defineTool({
             causes: z
                 .array(
                     z.object({
-                        reason: z.string().describe('A short code: data.'),
-                        owner: z
-                            .enum(['subscriber', 'mesub'])
-                            .describe(
-                                "Whose side the failure is on: the subscriber's wallet, or Mesub.",
-                            ),
+                        reason,
+                        reason_label: reasonLabel,
+                        owner: state(
+                            ['subscriber', 'mesub'],
+                            "Whose side the failure is on: the subscriber's wallet, or Mesub.",
+                        ),
                         count: z.number(),
                         amount_usd: z.string(),
                     }),
@@ -143,6 +160,7 @@ export const getOverview = defineTool({
         const nextUp = capped(overview.nextUp, MAX_NESTED_ITEMS);
         const causes = capped(collection.causes, MAX_NESTED_ITEMS);
         const { current } = overview.totals;
+        const automatic = overview.retriesAutomatic;
 
         return {
             data: {
@@ -161,7 +179,13 @@ export const getOverview = defineTool({
             },
             text:
                 `Over the last ${overview.days} days: ${plural(current.pullsSettled, 'charge')} paid, ` +
-                `${current.pullsFailed} failed, ${current.recovered} won back by a retry. Now: ` +
+                `${current.pullsFailed} failed, ${current.recovered} won back by a retry` +
+                (automatic === true ? `, ${current.retryToCome} with a retry to come. ` : '. ') +
+                (automatic === false
+                    ? 'Nothing is retried by itself on this tier: a late charge waits for a ' +
+                      'retry by hand (retry_charge). '
+                    : '') +
+                'Now: ' +
                 `${overview.cards.activeSubscriptions} active, ${overview.cards.late} late, ` +
                 `${overview.cards.stopped} stopped. ${DATA_NOTICE}`,
         };

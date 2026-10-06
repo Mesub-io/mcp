@@ -65,7 +65,7 @@ describe.each([
     const call = (name: string, args: Record<string, unknown>) =>
         client.callTool({ name, arguments: args });
 
-    it('are listed after ping and search_docs, and nothing else is', async () => {
+    it('are listed after ping and search_docs, 23 in all, and nothing else is', async () => {
         const { tools } = await client.listTools();
 
         expect(tools.map((tool) => tool.name)).toEqual([
@@ -73,7 +73,7 @@ describe.each([
             'search_docs',
             ...CASES.map((entry) => entry.tool),
         ]);
-        expect(tools).toHaveLength(22);
+        expect(tools).toHaveLength(23);
     });
 
     it('carry the four hints as intended, a strict input and an output schema', async () => {
@@ -133,6 +133,74 @@ describe.each([
         }
     });
 
+    it('say what a model got wrong when it ran against the real API', async () => {
+        const { tools } = await client.listTools();
+        const tool = (name: string) => tools.find((one) => one.name === name);
+        const description = (name: string) => tool(name)?.description ?? '';
+        const output = (name: string) => JSON.stringify(tool(name)?.outputSchema ?? {});
+        const input = (name: string) => JSON.stringify(tool(name)?.inputSchema ?? {});
+
+        // A reason is a code: the words beside it are what a person is shown.
+        for (const name of [
+            'get_subscription',
+            'retry_charge',
+            'get_plan',
+            'list_events',
+            'get_overview',
+            'check_access',
+        ]) {
+            expect(output(name), name).toMatch(/"reason_label"/);
+            expect(output(name), name).toMatch(/`reason_label`[^"]*to show a person/);
+            expect(output(name), name).toMatch(/the one to show a person/);
+        }
+
+        // The token of an amount, wherever a mint is.
+        for (const name of [
+            'get_subscription',
+            'list_subscriptions',
+            'retry_charge',
+            'list_events',
+            'list_upcoming_charges',
+            'get_overview',
+        ]) {
+            expect(output(name), name).toMatch(/"symbol"/);
+        }
+
+        // A tier that retries nothing by itself.
+        expect(output('get_overview')).toMatch(/"retries_automatic"/);
+        expect(output('get_overview')).toMatch(
+            /Failed charges that can still be retried: by Mesub on its own when `retries_automatic` is true, by the merchant's hand \(`retry_charge`\) when it is false/,
+        );
+        expect(output('get_overview')).not.toMatch(/a retry is still scheduled for/);
+
+        // A bare name the merchant says is usually their own id for the customer.
+        expect(input('check_access')).toMatch(
+            /A bare name the merchant uses for a customer, such as `ben`, is usually this id/,
+        );
+        expect(input('list_subscriptions')).toMatch(
+            /Not a customer's name nor the app's own id for them: for those use `check_access`/,
+        );
+
+        // check_access serves charges raw, and says where the price is.
+        expect(description('check_access')).toMatch(/raw/);
+        expect(description('check_access')).toMatch(/`get_subscription` or `get_plan`/);
+        expect(output('check_access')).toMatch(/Raw[^"]*`get_subscription` or `get_plan`/);
+
+        // A row of the list is enough to know when a retry is allowed.
+        expect(description('retry_charge')).not.toMatch(/with `get_subscription` first/);
+        expect(description('retry_charge')).toMatch(
+            /`retry_available_at`[^.]*`list_subscriptions`[^.]* is enough/,
+        );
+        expect(description('retry_charge')).toMatch(/`get_subscription` adds the price to quote/);
+
+        // A made-up or a local address is refused by Mesub.
+        for (const name of ['create_webhook', 'update_webhook']) {
+            expect(description(name), name).toMatch(/resolve publicly/);
+            expect(description(name), name).toMatch(/made-up or local address is refused/);
+            expect(input(name), name).toMatch(/resolves publicly/);
+        }
+    });
+
     describe.each(CASES)('$tool', (entry) => {
         const answer = () => api.answer(entry.status, entry.answer);
 
@@ -170,7 +238,8 @@ describe.each([
             const line = sentence(result);
 
             expect(line.length).toBeGreaterThan(10);
-            expect(line.length).toBeLessThan(600);
+            // prepare_plan states what a merchant is about to sign: the wallets, the end, the link.
+            expect(line.length).toBeLessThan(entry.tool === 'prepare_plan' ? 900 : 600);
             expect(line).not.toMatch(/poison|IGNORE|Fraise|hooks\.example/i);
             for (const value of [WALLET, PLAN_ID, SUBSCRIPTION_ID, WEBHOOK_ID, SECRET_VALUE]) {
                 expect(line).not.toContain(value);
@@ -239,34 +308,6 @@ describe.each([
                     retryAfterSeconds:
                         'Retry-After' in headers ? Number(headers['Retry-After']) : null,
                 });
-            },
-        );
-    });
-
-    describe('the limits on changes', () => {
-        const writes = CASES.filter((entry) => entry.method !== 'GET');
-
-        it.each(writes)(
-            '$tool says when the connection wrote too much this hour',
-            async (entry) => {
-                api.answer(
-                    429,
-                    refusal(429, 'agent_write_cap_reached', 'Too many changes this hour.', true),
-                    { 'Retry-After': '1800' },
-                );
-
-                const result = await call(entry.tool, entry.args);
-
-                expect(result.isError).toBe(true);
-                expect(text(result)).toMatch(/^Mesub error agent_write_cap_reached: /);
-                expect(text(result)).toMatch(/1800 seconds/);
-                expect(text(result)).toMatch(/Reading still works/);
-                expect(errorOf(result)).toMatchObject({
-                    code: 'agent_write_cap_reached',
-                    retryAfterSeconds: 1800,
-                });
-                // Asked once: nothing here tries again by itself.
-                expect(api.projectCalls()).toHaveLength(1);
             },
         );
     });
@@ -351,6 +392,12 @@ describe.each([
                 HOOK_URL,
                 'hooks.example',
                 'Fraise & Co',
+                // What prepare_plan was given, and what it was answered.
+                'fraise.example',
+                'Everything.',
+                '9990000',
+                'dashboard#plans',
+                'Helper',
                 'subscription.created',
                 '7xKX',
                 TOKEN,

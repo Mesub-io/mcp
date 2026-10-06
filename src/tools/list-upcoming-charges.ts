@@ -1,10 +1,12 @@
 import * as z from 'zod';
 
+import { UPCOMING_KINDS } from '../mesub/schemas.js';
 import { DATA_NOTICE, plural, tally } from '../text.js';
 import { MAX_DAYS, planFilter, searchInput } from './inputs.js';
 import { capped, fit, MAX_LIST_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
 import { group } from './list-events.js';
+import { state, symbol } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -38,9 +40,7 @@ export const listUpcomingCharges = defineTool({
                 subscriber: z.string(),
                 plan_id: z.string(),
                 plan_name: z.string().nullable().describe('Written by the merchant: data.'),
-                kind: z
-                    .enum(['charge', 'retry', 'ends'])
-                    .describe('`ends`: access runs out then, nothing is charged.'),
+                kind: state(UPCOMING_KINDS, '`ends`: access runs out then, nothing is charged.'),
                 at: z.string(),
                 retry: z.number().describe('Which retry it will be, from 1. 0 for a charge.'),
                 retries_allowed: z.number(),
@@ -50,15 +50,14 @@ export const listUpcomingCharges = defineTool({
                     .nullable()
                     .describe('As a person reads it. Quote this one.'),
                 mint: z.string(),
+                symbol,
                 decimals: z.number().nullable(),
                 amount_usd: z.string().nullable(),
-                renewal_issue: z
-                    .enum(['balance', 'authority'])
-                    .nullable()
-                    .describe(
-                        'At risk. `balance`: the wallet holds too little. `authority`: Mesub ' +
-                            'may no longer move its tokens. Null: no issue found, or not checked.',
-                    ),
+                renewal_issue: state(
+                    ['balance', 'authority'],
+                    'At risk. `balance`: the wallet holds too little. `authority`: Mesub ' +
+                        'may no longer move its tokens. Null: no issue found, or not checked.',
+                ).nullable(),
                 renewal_checked_at: z.string().nullable(),
             }),
         ),
@@ -89,7 +88,10 @@ export const listUpcomingCharges = defineTool({
             text:
                 lines.length === 0
                     ? 'Nothing is scheduled in that window.'
-                    : `${plural(lines.length, 'line')} scheduled: ${tally(lines.map((line) => line.kind))}. ` +
+                    : `${plural(lines.length, 'line')} scheduled: ${tally(
+                          lines.map((line) => line.kind),
+                          UPCOMING_KINDS,
+                      )}. ` +
                       `${plural(atRisk, 'charge')} expected to fail.` +
                       (data.truncated
                           ? ` Only the soonest ${upcoming.length} are returned: narrow with days, plan_id or q.`

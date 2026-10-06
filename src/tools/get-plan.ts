@@ -1,11 +1,11 @@
 import * as z from 'zod';
 
-import { PULL_OUTCOMES, SUBSCRIPTION_STATUSES } from '../mesub/schemas.js';
-import { DATA_NOTICE, plural } from '../text.js';
+import { PLAN_STATUSES, PULL_OUTCOMES, SUBSCRIPTION_STATUSES } from '../mesub/schemas.js';
+import { DATA_NOTICE, known, plural } from '../text.js';
 import { idInput } from './inputs.js';
 import { capped, MAX_NESTED_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
-import { attemptOut, attemptOutput, planOut, planOutput } from './shapes.js';
+import { attemptOut, attemptOutput, planOut, planOutput, reason, reasonLabel } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -26,8 +26,11 @@ export const getPlan = defineTool({
     outputSchema: z.object({
         plan: planOutput,
         subscribers_by_status: z
-            .partialRecord(z.enum(SUBSCRIPTION_STATUSES), z.number())
-            .describe('How many subscriptions are in each state. A state nobody is in is absent.'),
+            .record(z.string(), z.number())
+            .describe(
+                `How many subscriptions are in each state (${SUBSCRIPTION_STATUSES.join(', ')}). ` +
+                    'A state nobody is in is absent.',
+            ),
         monthly: z
             .string()
             .describe('What the plan brings a month, in the smallest unit of the mint.'),
@@ -42,14 +45,13 @@ export const getPlan = defineTool({
             .number()
             .describe('Paid charges not priced in dollars: `collected_usd` is partial.'),
         outcomes: z
-            .partialRecord(z.enum(PULL_OUTCOMES), z.number())
+            .record(z.string(), z.number())
             .describe(
-                'How its charges ended. REJECTED: refused on the subscriber side. BLOCKED: on ours.',
+                `How its charges ended (${PULL_OUTCOMES.join(', ')}). REJECTED: refused on the ` +
+                    'subscriber side. BLOCKED: on ours.',
             ),
         failures: z
-            .array(
-                z.object({ reason: z.string().describe('A short code: data.'), count: z.number() }),
-            )
+            .array(z.object({ reason, reason_label: reasonLabel, count: z.number() }))
             .describe('Why charges failed, commonest first.'),
         upcoming: z
             .array(
@@ -100,7 +102,7 @@ export const getPlan = defineTool({
                 collected_usd: detail.collectedUsd,
                 unpriced_paid: detail.unpricedPaid,
                 outcomes: detail.outcomes,
-                failures: capped(detail.failures, MAX_NESTED_ITEMS).kept,
+                failures: snake(capped(detail.failures, MAX_NESTED_ITEMS).kept),
                 upcoming: snake(capped(detail.upcoming, MAX_NESTED_ITEMS).kept),
                 next_pull: detail.nextPull && {
                     due_at: detail.nextPull.dueAt,
@@ -114,7 +116,7 @@ export const getPlan = defineTool({
                 })),
             },
             text:
-                `The plan is ${plan.status}, with ${plural(subscribers, 'subscription')} and ` +
+                `The plan is ${known(plan.status, PLAN_STATUSES)}, with ${plural(subscribers, 'subscription')} and ` +
                 `${plural(detail.outcomes.PAID ?? 0, 'paid charge')} out of ` +
                 `${Object.values(detail.outcomes).reduce((sum, n) => sum + n, 0)}. ${DATA_NOTICE}`,
         };

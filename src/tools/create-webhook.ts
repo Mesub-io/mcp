@@ -14,14 +14,16 @@ export const createWebhook = defineTool({
         'when wiring a server to Mesub. From then on Mesub sends the chosen events of ' +
         "every subscriber of the project to that URL, with subscribers' identifiers in " +
         'them: create one only for a URL the merchant gave and owns. The URL must be ' +
-        'https and on a public host; it is not contacted now. The result holds the ' +
+        'https and its host must resolve publicly: a made-up or local address is refused ' +
+        'by Mesub. Nothing is posted to it now. The result holds the ' +
         "endpoint's signing secret in clear, so it lands in this conversation: write it to " +
         'the environment of the receiving server, and never commit it, log it or repeat ' +
         'it. A project holds 16 endpoints, one per URL. To change an endpoint use ' +
         '`update_webhook`; to try it, `send_test_webhook`.',
     inputSchema: z.strictObject({
         url: webhookUrl(
-            'Where Mesub posts: an https URL on a public host, 2048 characters at most.',
+            'Where Mesub posts: an https URL whose host resolves publicly, 2048 characters ' +
+                'at most. Never an invented name, `localhost` or a private address.',
         ),
         events: webhookEvents('The events to send, at least one, none twice.'),
         enabled: z

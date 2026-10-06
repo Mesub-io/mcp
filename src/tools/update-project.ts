@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
-import { DATA_NOTICE } from '../text.js';
+import { TIERS } from '../mesub/schemas.js';
+import { DATA_NOTICE, known } from '../text.js';
 import { projectOut, projectOutput } from './shapes.js';
 import { defineTool } from './tool.js';
 
@@ -11,8 +12,7 @@ export const updateProject = defineTool({
     title: 'Rename the project',
     description:
         'Rename the Mesub project this connection is for. The name only: this tool cannot ' +
-        'change the tier, the API key, the allowed origins, nor delete the project, and no ' +
-        'tool here can. The new name replaces the old one in the dashboard at once. Plans ' +
+        'change the tier or the API key, nor delete the project, and no tool here can. The new name replaces the old one in the dashboard at once. Plans ' +
         'already published keep the old name on chain until the merchant signs an update in ' +
         'the dashboard. Refused when the account has another project under that name. ' +
         'Returns the project as `get_project` does.',
@@ -42,7 +42,7 @@ export const updateProject = defineTool({
         const project = await mesub.renameProject(name, signal);
         return {
             data: { project: projectOut(project) },
-            text: `The project was renamed. It is on the ${project.tier} tier. ${DATA_NOTICE}`,
+            text: `The project was renamed. It is on the ${known(project.tier, TIERS)} tier. ${DATA_NOTICE}`,
         };
     },
 });

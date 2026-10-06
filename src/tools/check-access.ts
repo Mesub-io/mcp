@@ -1,7 +1,9 @@
 import * as z from 'zod';
 
-import { DATA_NOTICE, plural } from '../text.js';
+import { ACCESS_STATUSES, PAYMENT_STATUSES } from '../mesub/schemas.js';
+import { DATA_NOTICE, known, plural } from '../text.js';
 import { capped, MAX_LIST_ITEMS } from './limits.js';
+import { reason, reasonLabel } from './shapes.js';
 import { defineTool } from './tool.js';
 
 const answerOutput = z.object({
@@ -25,19 +27,21 @@ const answerOutput = z.object({
         .array(
             z.object({
                 outcome: z.string(),
-                reason: z.string().nullable().describe('A short code: data.'),
+                reason: reason.nullable(),
+                reason_label: reasonLabel,
                 amount: z
                     .string()
                     .describe(
-                        "In the smallest unit of the plan's token, with no decimals served " +
-                            'here: `list_plans` has the plan with its display values.',
+                        "Raw: in the smallest unit of the plan's token, with no display " +
+                            'value here. Never quote it nor convert it: the price to quote ' +
+                            'comes from `get_subscription` or `get_plan`.',
                     ),
                 attempted_at: z.string(),
                 signature: z.string().nullable(),
             }),
         )
         .optional()
-        .describe('The last five charges, only when asked for.'),
+        .describe('The last five charges, only when asked for. Their amounts are raw.'),
     revalidate_after: z.number().describe('Seconds this answer stays good for.'),
 });
 
@@ -55,7 +59,9 @@ export const checkAccess = defineTool({
         "merchant's own id for them, or their email. With a plan slug it answers for that " +
         'plan; without one, for every plan of the project the customer has. A customer ' +
         'with no subscription is a normal answer (`access: false`, status `none`), not an ' +
-        'error. To browse subscribers use `list_subscriptions`. Changes nothing.',
+        'error. The amounts of the charges it returns are raw, in the smallest unit of the ' +
+        "plan's token: the price to quote comes from `get_subscription` or `get_plan`. To " +
+        'browse subscribers use `list_subscriptions`. Changes nothing.',
     inputSchema: z
         .strictObject({
             wallet: z
@@ -72,7 +78,11 @@ export const checkAccess = defineTool({
                 // eslint-disable-next-line no-control-regex
                 .regex(/^[^\u0000-\u001f\u007f]*$/, 'No control characters.')
                 .optional()
-                .describe("The merchant's own id for the customer, as given when they subscribed."),
+                .describe(
+                    "The merchant's own id for the customer, as given when they subscribed. A " +
+                        'bare name the merchant uses for a customer, such as `ben`, is usually ' +
+                        'this id: try it before asking who they mean.',
+                ),
             email: z
                 .email()
                 .max(254)
@@ -123,7 +133,8 @@ export const checkAccess = defineTool({
                 },
                 text:
                     `Access is ${answer.access ? 'granted' : 'refused'} on that plan: status ` +
-                    `${answer.status}, payment ${answer.payment_status}` +
+                    `${known(answer.status, ACCESS_STATUSES)}, payment ` +
+                    `${known(answer.payment_status, PAYMENT_STATUSES)}` +
                     `${answer.paused ? ', paused' : ''}. ${DATA_NOTICE}`,
             };
         }

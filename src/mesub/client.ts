@@ -3,6 +3,7 @@ import type * as z from 'zod';
 import { revealSecret, type Secret } from '../secret.js';
 import { VERSION } from '../version.js';
 import { MesubApiError, codeForStatus } from './errors.js';
+import { isLink } from './link.js';
 import {
     agentAccessListSchema,
     agentAccessSchema,
@@ -19,6 +20,7 @@ import {
     agentWhoamiSchema,
     apiHealthSchema,
     nothingSchema,
+    preparedPlanSchema,
     renamedProjectSchema,
     webhookDeliveryPageSchema,
     webhookDeliverySchema,
@@ -40,6 +42,7 @@ import {
     type AgentUpcomingLine,
     type AgentWhoami,
     type ApiHealth,
+    type PreparedPlan,
     type ServedProject,
     type WebhookDelivery,
     type WebhookDeliveryPage,
@@ -240,6 +243,35 @@ export class MesubClient {
     /** `GET /agent/plans`. */
     plans(signal?: AbortSignal): Promise<AgentListedPlan[]> {
         return this.#call('GET', '/agent/plans', { as: 'agent', schema: agentPlansSchema, signal });
+    }
+
+    /**
+     * `POST /agent/plans`: a plan for the merchant to sign. Nothing on chain.
+     * No slug and no receiver: the API takes neither from an agent.
+     */
+    preparePlan(
+        plan: {
+            name: string;
+            mint: string;
+            amount: string;
+            periodHours: number;
+            description?: string | undefined;
+            websiteUrl?: string | undefined;
+            retryAttempts?: number | undefined;
+            retryDelayMinutes?: number | undefined;
+            /** The only wallets the plan may pay, locked at signature. Left out: none is locked. */
+            destinations?: readonly string[] | undefined;
+            /** ISO 8601, UTC. Left out: no end. */
+            endsAt?: string | undefined;
+        },
+        signal?: AbortSignal,
+    ): Promise<PreparedPlan> {
+        return this.#call('POST', '/agent/plans', {
+            as: 'agent',
+            body: plan,
+            schema: preparedPlanSchema,
+            signal,
+        });
     }
 
     /** `GET /agent/plans/:id`. */
@@ -515,10 +547,11 @@ export class MesubClient {
         );
 
         const body = parsed(text);
-        if (!response.ok) throw this.#errorFrom(response, body);
+        if (!response.ok) throw this.#errorFrom(response, body === UNREADABLE ? undefined : body);
 
+        // A page, a banner, half an answer: never taken for "nothing", which is what a 204 says.
         const result = options.schema.safeParse(body);
-        if (!result.success) {
+        if (body === UNREADABLE || !result.success) {
             throw new MesubApiError('Mesub answered with a body this server cannot read.', {
                 status: response.status,
                 code: 'unexpected',
@@ -591,11 +624,14 @@ export class MesubClient {
         } catch {
             end('caller');
             if (ended === 'too long') {
-                throw new MesubApiError('Mesub answered with a body this server cannot read.', {
-                    status: null,
-                    code: 'unexpected',
-                    retryable: false,
-                });
+                throw new MesubApiError(
+                    'Mesub answered with more than this server reads at once.',
+                    {
+                        status: null,
+                        code: 'response_too_large',
+                        retryable: false,
+                    },
+                );
             }
             // No cause kept, and none of its message: it may quote the URL or a header.
             const message =
@@ -620,7 +656,7 @@ export class MesubClient {
      */
     #errorFrom(response: Response, body: unknown): MesubApiError {
         const { status } = response;
-        const { code, retryable } = isRecord(body) ? body : {};
+        const { code, retryable, walletUrl } = isRecord(body) ? body : {};
 
         // Scrubbed whole, then cut: a cut must not leave half a credential behind.
         const message = this.#scrub(messageFrom(body, status)).slice(0, MAX_MESSAGE_LENGTH);
@@ -636,6 +672,8 @@ export class MesubClient {
                     ? retryable
                     : status === 408 || status === 429 || status >= 500,
             retryAfterSeconds: retryAfter(response.headers.get('retry-after')),
+            // Kept only as an address of the dashboard: never a text to relay.
+            walletUrl: isLink(walletUrl) ? walletUrl : null,
         });
     }
 }
@@ -660,11 +698,16 @@ function retryAfter(header: string | null): number | null {
     return Number.isFinite(value) && value >= 0 ? Math.ceil(value) : null;
 }
 
+/** An answer that has a body, and whose body is not JSON. */
+const UNREADABLE = Symbol('unreadable');
+
+/** The JSON of an answer. Undefined for an empty one, which is what a 204 is. */
 function parsed(text: string): unknown {
+    if (text === '') return undefined;
     try {
         return JSON.parse(text);
     } catch {
-        return undefined;
+        return UNREADABLE;
     }
 }
 

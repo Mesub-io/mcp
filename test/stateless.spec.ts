@@ -56,7 +56,7 @@ describe('statelessness', () => {
         await client.close();
 
         expect(tools.map((tool) => tool.name)).toEqual(TOOLS.map((tool) => tool.name));
-        expect(tools).toHaveLength(22);
+        expect(tools).toHaveLength(23);
         for (const result of [one, two, three]) {
             expect(result.isError).toBeFalsy();
             expect(result.structuredContent).toEqual({ status: 'ok', uptime_seconds: 42 });

@@ -14,16 +14,18 @@ export const updateWebhook = defineTool({
         "project chosen for this endpoint, with subscribers' identifiers, goes to the new " +
         'address from then on, and the old one gets nothing. Ask the merchant before ' +
         'calling it, stating the old and the new value, and only ever set a URL the ' +
-        'merchant gave and owns. Removing an event or disabling the endpoint stops a live ' +
+        'merchant gave and owns. Its host must resolve publicly: a made-up or local ' +
+        'address is refused by Mesub. Removing an event or disabling the endpoint stops a live ' +
         'integration from hearing of it, and disabling mails the account owner. Send only ' +
         'what changes; the signing secret is kept. An endpoint Mesub turned off after ' +
         'failures comes back only with `enabled: true`. To remove an endpoint use ' +
-        '`delete_webhook`. Returns the endpoint.',
+        '`delete_webhook`; to add another, `create_webhook`. Returns the endpoint.',
     inputSchema: z
         .strictObject({
             webhook_id: webhookId,
             url: webhookUrl(
-                'The new address: an https URL on a public host. Left out: unchanged.',
+                'The new address: an https URL whose host resolves publicly, never an ' +
+                    'invented name, `localhost` or a private address. Left out: unchanged.',
             ).optional(),
             events: webhookEvents(
                 'The events it takes from now on: this list replaces the current one. Left out: unchanged.',
