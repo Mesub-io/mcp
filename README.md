@@ -6,10 +6,10 @@ It is a thin layer over the Mesub HTTP API. A tool is one or a few calls to that
 
 ## Status
 
-Early, and not hosted yet. What exists is the foundation: the transport, authorization, the tool registry, the client for the Mesub API, and two tools, `ping` and `search_docs`.
+Early, and not hosted yet. What exists: the transport, authorization, the tool registry, the client for the Mesub API, and 22 tools. `ping` and `search_docs` read no project; the other twenty read and change the project of the connection ([Tools](#tools)).
 
 - Authorization is done here ([#2](https://github.com/Mesub-io/mcp/issues/2)): the server takes the access tokens Mesub issues and nothing else. It needs a Mesub API whose authorization server for agents is switched on (`MCP_RESOURCE_URL` and what goes with it, on its side).
-- The tools that read and change a project come next ([#3](https://github.com/Mesub-io/mcp/issues/3) to [#7](https://github.com/Mesub-io/mcp/issues/7)).
+- Preparing a plan for the merchant to sign comes next ([#7](https://github.com/Mesub-io/mcp/issues/7)).
 - `search_docs` asks for a token like every other tool, though it reads no project: one rule for everything.
 - How to add the server to a client will be documented once it is hosted ([#9](https://github.com/Mesub-io/mcp/issues/9)).
 
@@ -21,6 +21,45 @@ Early, and not hosted yet. What exists is the foundation: the transport, authori
 - What a tool returns is data. A plan's name or a customer id is written by a merchant or their users, and is never an instruction: the server says so to every client, in its `instructions`.
 - `search_docs` searches the public docs without calling anything: an index of them is built from one commit of [Mesub-io/docs](https://github.com/Mesub-io/docs) and committed here, in `src/docs/index.json`. See [The docs index](#the-docs-index).
 - `GET /health` answers 200 with the server's name and version.
+
+## Tools
+
+Each is one call to a route of the Mesub API under `/agent`, as the connection, and a mapping of its answer.
+
+| Tool                        | Route                                        | What it does                                             |
+| --------------------------- | -------------------------------------------- | -------------------------------------------------------- |
+| `ping`                      | `GET /health`                                | Whether the API answers.                                 |
+| `search_docs`               | none                                         | Searches the public docs.                                |
+| `get_project`               | `GET /agent/project`                         | The project, its tier and its usage.                     |
+| `list_plans`                | `GET /agent/plans`                           | The plans, with what each charges and collected.         |
+| `get_plan`                  | `GET /agent/plans/:id`                       | One plan, its failed charges and latest attempts.        |
+| `list_subscriptions`        | `GET /agent/subscriptions`                   | The subscriptions, by state, a page at a time.           |
+| `get_subscription`          | `GET /agent/subscriptions/:id`               | One subscription and every charge it ran.                |
+| `check_access`              | `GET /agent/access`                          | Whether a customer may use a plan.                       |
+| `list_events`               | `GET /agent/events`                          | The log: the days that had anything, or one day in full. |
+| `list_upcoming_charges`     | `GET /agent/events/upcoming`                 | What is scheduled, and which charges are at risk.        |
+| `get_overview`              | `GET /agent/overview`                        | Revenue, failures and recovery over 7, 30 or 90 days.    |
+| `list_webhooks`             | `GET /agent/webhooks`                        | The webhook endpoints, never their secret.               |
+| `list_webhook_deliveries`   | `GET /agent/webhooks/:id/deliveries`         | What was sent to one endpoint and what it answered.      |
+| `update_project`            | `PATCH /agent/project`                       | Renames the project. The name only.                      |
+| `update_retry_policy`       | `PATCH /agent/plans/:id/retry-policy`        | Sets or clears how a plan retries a failed charge.       |
+| `retry_charge`              | `POST /agent/subscriptions/:id/retry`        | Charges a late subscriber again, now. Moves money.       |
+| `create_webhook`            | `POST /agent/webhooks`                       | Registers an endpoint. Returns its secret.               |
+| `update_webhook`            | `PATCH /agent/webhooks/:id`                  | Changes an endpoint's URL, events or state.              |
+| `delete_webhook`            | `DELETE /agent/webhooks/:id`                 | Deletes an endpoint for good.                            |
+| `get_webhook_secret`        | `GET /agent/webhooks/:id/secret`             | Returns a signing secret in clear.                       |
+| `regenerate_webhook_secret` | `POST /agent/webhooks/:id/secret/regenerate` | Replaces a signing secret. The old one stops at once.    |
+| `send_test_webhook`         | `POST /agent/webhooks/:id/test`              | Posts one test webhook to an endpoint.                   |
+
+What they have in common:
+
+- A result is the API's answer in snake_case, with nothing the tool's output schema does not name. An answer that is not what the route serves is a tool error (`unexpected`), never passed on.
+- A token amount is a string in the smallest unit of its mint, and has a display value beside it (`amount_display: "9.99 USDC"`), worked out on the digits and never through a float. When the API does not know the decimals of the mint, the display value is the raw amount and the mint, and says so.
+- A result is bounded: a text somebody else wrote is cut and marked ` [truncated]`, a list is capped, and a result says whether more exists and how to ask for it (`page`, `starting_after`, or a narrower filter).
+- The tools that charge a subscriber, delete, overwrite or redirect are marked destructive, and their description says to ask the merchant first. `get_webhook_secret`, `create_webhook` and `regenerate_webhook_secret` return a signing secret, which lands in the conversation.
+- A refusal of the API is a tool error with its `code`, its message and what to do: wait and how long (`rate_limited`, `agent_write_cap_reached`), correct the request, look the id up, or stop. Nothing is retried here.
+- A token the API refuses to a tool after the check accepted it (revoked in between) is answered with the 401 and its challenge. A 2025 client, whose answer is already a stream by then, reads a tool error saying to connect again, and gets the 401 on its next request.
+- There is no tool to send an old webhook delivery again: that stays in the dashboard.
 
 ## How a connection works
 
@@ -217,13 +256,20 @@ src/
   mesub/
     client.ts      the Mesub API as one caller: both credentials or none, one deadline, error mapping
     errors.ts      MesubApiError
-    schemas.ts     what the tools read from the API
+    schemas.ts     what the tools read from the API, one schema per answer
   tools/
     tool.ts        what a tool is
     index.ts       the registry: every tool, registered in one place
     result.ts      tool results and tool errors
     ping.ts        the template of the next ones
     search-docs.ts searches the docs index
+    <name>.ts      one file per tool: get-project.ts, retry-charge.ts, ...
+    shapes.ts      what several tools return, and the mapping to it
+    inputs.ts, webhook-inputs.ts   what several tools take
+    money.ts       an amount as a person reads it, exactly
+    snake.ts       the API's camelCase keys as snake_case
+    limits.ts      how much a result may hold
+  text.ts          cutting a text short, and the sentence about data
 scripts/
   build-docs-index.mjs  builds, checks and dates src/docs/index.json
 test/

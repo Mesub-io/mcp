@@ -3,7 +3,49 @@ import type * as z from 'zod';
 import { revealSecret, type Secret } from '../secret.js';
 import { VERSION } from '../version.js';
 import { MesubApiError, codeForStatus } from './errors.js';
-import { agentWhoamiSchema, apiHealthSchema, type AgentWhoami, type ApiHealth } from './schemas.js';
+import {
+    agentAccessListSchema,
+    agentAccessSchema,
+    agentEventDaysSchema,
+    agentEventLinesSchema,
+    agentOverviewSchema,
+    agentPlanDetailSchema,
+    agentPlanSchema,
+    agentPlansSchema,
+    agentProjectSchema,
+    agentSubscriptionPageSchema,
+    agentSubscriptionSchema,
+    agentUpcomingSchema,
+    agentWhoamiSchema,
+    apiHealthSchema,
+    nothingSchema,
+    renamedProjectSchema,
+    webhookDeliveryPageSchema,
+    webhookDeliverySchema,
+    webhookEndpointSchema,
+    webhookEndpointsSchema,
+    webhookEndpointWithSecretSchema,
+    webhookSecretSchema,
+    type AccessAnswer,
+    type AccessList,
+    type AgentEventDays,
+    type AgentEventLine,
+    type AgentListedPlan,
+    type AgentOverview,
+    type AgentPlan,
+    type AgentPlanDetail,
+    type AgentProject,
+    type AgentSubscription,
+    type AgentSubscriptionPage,
+    type AgentUpcomingLine,
+    type AgentWhoami,
+    type ApiHealth,
+    type ServedProject,
+    type WebhookDelivery,
+    type WebhookDeliveryPage,
+    type WebhookEndpoint,
+    type WebhookEndpointWithSecret,
+} from './schemas.js';
 
 /**
  * The version of the Mesub API this server was written against, sent in the
@@ -113,6 +155,22 @@ export function apiUrl(baseUrl: string, path: string, query: Record<string, Quer
     return url;
 }
 
+/** Who `GET /agent/access` is asked about: exactly one of the three. */
+export type AccessQuery = {
+    wallet?: string | undefined;
+    external_id?: string | undefined;
+    email?: string | undefined;
+    attempts?: boolean | undefined;
+};
+
+/** What narrows `GET /agent/events`. */
+export type EventsQuery = {
+    plan?: string | undefined;
+    group?: string | undefined;
+    q?: string | undefined;
+    by?: string | undefined;
+};
+
 /**
  * The Mesub HTTP API, as this server acting for one agent. It is the only
  * place a credential is put on a request, and it puts both or none: the
@@ -154,6 +212,269 @@ export class MesubClient {
             schema: agentWhoamiSchema,
             signal: options.signal,
             timeoutMs: options.timeoutMs,
+        });
+    }
+
+    // The routes under /agent, one method each. Every one is made as the
+    // agent: the project is the token's, and no method takes its id.
+
+    /** `GET /agent/project`. */
+    project(signal?: AbortSignal): Promise<AgentProject> {
+        return this.#call('GET', '/agent/project', {
+            as: 'agent',
+            schema: agentProjectSchema,
+            signal,
+        });
+    }
+
+    /** `PATCH /agent/project`: the name, and nothing else. */
+    renameProject(name: string, signal?: AbortSignal): Promise<ServedProject> {
+        return this.#call('PATCH', '/agent/project', {
+            as: 'agent',
+            body: { name },
+            schema: renamedProjectSchema,
+            signal,
+        });
+    }
+
+    /** `GET /agent/plans`. */
+    plans(signal?: AbortSignal): Promise<AgentListedPlan[]> {
+        return this.#call('GET', '/agent/plans', { as: 'agent', schema: agentPlansSchema, signal });
+    }
+
+    /** `GET /agent/plans/:id`. */
+    plan(planId: string, signal?: AbortSignal): Promise<AgentPlanDetail> {
+        return this.#call('GET', `/agent/plans/${pathSegment(planId)}`, {
+            as: 'agent',
+            schema: agentPlanDetailSchema,
+            signal,
+        });
+    }
+
+    /** `PATCH /agent/plans/:id/retry-policy`. An empty policy clears it. */
+    updateRetryPolicy(
+        planId: string,
+        policy: { retryAttempts: number; retryDelayMinutes: number } | Record<string, never>,
+        signal?: AbortSignal,
+    ): Promise<AgentPlan> {
+        return this.#call('PATCH', `/agent/plans/${pathSegment(planId)}/retry-policy`, {
+            as: 'agent',
+            body: policy,
+            schema: agentPlanSchema,
+            signal,
+        });
+    }
+
+    /** `GET /agent/subscriptions`. */
+    subscriptions(
+        query: {
+            plan?: string | undefined;
+            status?: string | undefined;
+            q?: string | undefined;
+            days?: number | undefined;
+            page?: number | undefined;
+            limit?: number | undefined;
+        },
+        signal?: AbortSignal,
+    ): Promise<AgentSubscriptionPage> {
+        return this.#call('GET', '/agent/subscriptions', {
+            as: 'agent',
+            query,
+            schema: agentSubscriptionPageSchema,
+            signal,
+        });
+    }
+
+    /** `GET /agent/subscriptions/:id`. */
+    subscription(subscriptionId: string, signal?: AbortSignal): Promise<AgentSubscription> {
+        return this.#call('GET', `/agent/subscriptions/${pathSegment(subscriptionId)}`, {
+            as: 'agent',
+            schema: agentSubscriptionSchema,
+            signal,
+        });
+    }
+
+    /** `POST /agent/subscriptions/:id/retry`: charges a subscriber. No body. */
+    retryCharge(subscriptionId: string, signal?: AbortSignal): Promise<AgentSubscription> {
+        return this.#call('POST', `/agent/subscriptions/${pathSegment(subscriptionId)}/retry`, {
+            as: 'agent',
+            schema: agentSubscriptionSchema,
+            signal,
+        });
+    }
+
+    /** `GET /agent/access` with a plan: one answer. */
+    access(query: AccessQuery & { plan: string }, signal?: AbortSignal): Promise<AccessAnswer> {
+        return this.#call('GET', '/agent/access', {
+            as: 'agent',
+            query,
+            schema: agentAccessSchema,
+            signal,
+        });
+    }
+
+    /** `GET /agent/access` without a plan: every plan the customer has. */
+    accessList(query: AccessQuery, signal?: AbortSignal): Promise<AccessList> {
+        return this.#call('GET', '/agent/access', {
+            as: 'agent',
+            query,
+            schema: agentAccessListSchema,
+            signal,
+        });
+    }
+
+    /** `GET /agent/events` without a day: the days that had anything, ten a page. */
+    eventDays(
+        query: EventsQuery & { days?: number | undefined; page?: number | undefined },
+        signal?: AbortSignal,
+    ): Promise<AgentEventDays> {
+        return this.#call('GET', '/agent/events', {
+            as: 'agent',
+            query,
+            schema: agentEventDaysSchema,
+            signal,
+        });
+    }
+
+    /** `GET /agent/events?day=`: that day, week or month in full. */
+    eventsOn(
+        query: EventsQuery & { day: string },
+        signal?: AbortSignal,
+    ): Promise<AgentEventLine[]> {
+        return this.#call('GET', '/agent/events', {
+            as: 'agent',
+            query,
+            schema: agentEventLinesSchema,
+            signal,
+        });
+    }
+
+    /** `GET /agent/events/upcoming`. */
+    upcoming(
+        query: {
+            plan?: string | undefined;
+            days?: number | undefined;
+            group?: string | undefined;
+            q?: string | undefined;
+        },
+        signal?: AbortSignal,
+    ): Promise<AgentUpcomingLine[]> {
+        return this.#call('GET', '/agent/events/upcoming', {
+            as: 'agent',
+            query,
+            schema: agentUpcomingSchema,
+            signal,
+        });
+    }
+
+    /** `GET /agent/overview`. */
+    overview(
+        query: { plan?: string | undefined; days?: number | undefined },
+        signal?: AbortSignal,
+    ): Promise<AgentOverview> {
+        return this.#call('GET', '/agent/overview', {
+            as: 'agent',
+            query,
+            schema: agentOverviewSchema,
+            signal,
+        });
+    }
+
+    /** `GET /agent/webhooks`. */
+    webhooks(signal?: AbortSignal): Promise<WebhookEndpoint[]> {
+        return this.#call('GET', '/agent/webhooks', {
+            as: 'agent',
+            schema: webhookEndpointsSchema,
+            signal,
+        });
+    }
+
+    /** `POST /agent/webhooks`: answers the endpoint with its secret in clear. */
+    createWebhook(
+        body: { url: string; events: readonly string[]; enabled?: boolean | undefined },
+        signal?: AbortSignal,
+    ): Promise<WebhookEndpointWithSecret> {
+        return this.#call('POST', '/agent/webhooks', {
+            as: 'agent',
+            body,
+            schema: webhookEndpointWithSecretSchema,
+            signal,
+        });
+    }
+
+    /** `PATCH /agent/webhooks/:endpointId`. */
+    updateWebhook(
+        endpointId: string,
+        body: {
+            url?: string | undefined;
+            events?: readonly string[] | undefined;
+            enabled?: boolean | undefined;
+        },
+        signal?: AbortSignal,
+    ): Promise<WebhookEndpoint> {
+        return this.#call('PATCH', `/agent/webhooks/${pathSegment(endpointId)}`, {
+            as: 'agent',
+            body,
+            schema: webhookEndpointSchema,
+            signal,
+        });
+    }
+
+    /** `DELETE /agent/webhooks/:endpointId`: 204. */
+    async deleteWebhook(endpointId: string, signal?: AbortSignal): Promise<void> {
+        await this.#call('DELETE', `/agent/webhooks/${pathSegment(endpointId)}`, {
+            as: 'agent',
+            schema: nothingSchema,
+            signal,
+        });
+    }
+
+    /** `GET /agent/webhooks/:endpointId/secret`: the signing secret in clear. Never logged. */
+    webhookSecret(endpointId: string, signal?: AbortSignal): Promise<{ secret: string }> {
+        return this.#call('GET', `/agent/webhooks/${pathSegment(endpointId)}/secret`, {
+            as: 'agent',
+            schema: webhookSecretSchema,
+            signal,
+        });
+    }
+
+    /** `POST /agent/webhooks/:endpointId/secret/regenerate`: the old secret stops at once. */
+    regenerateWebhookSecret(
+        endpointId: string,
+        signal?: AbortSignal,
+    ): Promise<WebhookEndpointWithSecret> {
+        return this.#call('POST', `/agent/webhooks/${pathSegment(endpointId)}/secret/regenerate`, {
+            as: 'agent',
+            schema: webhookEndpointWithSecretSchema,
+            signal,
+        });
+    }
+
+    /** `GET /agent/webhooks/:endpointId/deliveries`. */
+    webhookDeliveries(
+        endpointId: string,
+        query: { limit?: number | undefined; startingAfter?: string | undefined },
+        signal?: AbortSignal,
+    ): Promise<WebhookDeliveryPage> {
+        return this.#call('GET', `/agent/webhooks/${pathSegment(endpointId)}/deliveries`, {
+            as: 'agent',
+            query,
+            schema: webhookDeliveryPageSchema,
+            signal,
+        });
+    }
+
+    /** `POST /agent/webhooks/:endpointId/test`: posts to the merchant's endpoint. */
+    sendTestWebhook(
+        endpointId: string,
+        body: { event?: string | undefined },
+        signal?: AbortSignal,
+    ): Promise<WebhookDelivery> {
+        return this.#call('POST', `/agent/webhooks/${pathSegment(endpointId)}/test`, {
+            as: 'agent',
+            body,
+            schema: webhookDeliverySchema,
+            signal,
         });
     }
 

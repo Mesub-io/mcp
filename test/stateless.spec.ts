@@ -1,5 +1,6 @@
 import type { Client } from '@modelcontextprotocol/client';
 
+import { TOOLS } from '../src/tools/index.js';
 import {
     bearer,
     callTool,
@@ -54,7 +55,8 @@ describe('statelessness', () => {
         const three = await client.callTool({ name: 'ping', arguments: {} });
         await client.close();
 
-        expect(tools.map((tool) => tool.name)).toEqual(['ping', 'search_docs']);
+        expect(tools.map((tool) => tool.name)).toEqual(TOOLS.map((tool) => tool.name));
+        expect(tools).toHaveLength(22);
         for (const result of [one, two, three]) {
             expect(result.isError).toBeFalsy();
             expect(result.structuredContent).toEqual({ status: 'ok', uptime_seconds: 42 });

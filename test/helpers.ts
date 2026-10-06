@@ -33,7 +33,13 @@ export const MODERN = '2026-07-28';
 
 export interface FakeApiCall {
     method: string;
+    /** As it came, the query included. */
     path: string;
+    /** Without the query. */
+    pathname: string;
+    query: Record<string, string>;
+    /** The JSON sent, the text when it is not JSON, undefined when nothing was. */
+    body: unknown;
     headers: IncomingHttpHeaders;
 }
 
@@ -58,6 +64,8 @@ export interface FakeApi {
     /** Every call received, `/agent/whoami` included. */
     calls: FakeApiCall[];
     callsTo: (path: string) => FakeApiCall[];
+    /** The calls to the routes of a project: everything but the token checks and `/health`. */
+    projectCalls: () => FakeApiCall[];
     /** What every next call to a route other than `/agent/whoami` is answered with. */
     answer: (status: number, body: unknown, headers?: Record<string, string>) => void;
     /** Issues a token: a live connection `/agent/whoami` vouches for. */
@@ -140,10 +148,20 @@ export async function fakeMesubApi(): Promise<FakeApi> {
 
     const server = createServer(async (req, res) => {
         const path = req.url ?? '';
-        calls.push({ method: req.method ?? '', path, headers: req.headers });
+        const { pathname, searchParams } = new URL(path, 'http://fake');
+        const call: FakeApiCall = {
+            method: req.method ?? '',
+            path,
+            pathname,
+            query: Object.fromEntries(searchParams),
+            body: undefined,
+            headers: req.headers,
+        };
+        calls.push(call);
         pending += 1;
         res.on('close', () => (pending -= 1));
         if (interceptor?.(req, res)) return;
+        call.body = await sent(req);
         const isWhoami = path === '/agent/whoami';
         await (isWhoami ? whoamiGate : gate);
         if (isWhoami && delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
@@ -168,6 +186,8 @@ export async function fakeMesubApi(): Promise<FakeApi> {
         url,
         calls,
         callsTo: (path) => calls.filter((call) => call.path === path),
+        projectCalls: () =>
+            calls.filter((call) => call.path !== '/agent/whoami' && call.path !== '/health'),
         answer: (status, body, headers = {}) => {
             next = { status, body, headers };
         },
@@ -357,6 +377,19 @@ export const INITIALIZE = {
         clientInfo: { name: 'raw', version: '1.0.0' },
     },
 };
+
+/** What a request carried: its JSON, its text when that is not JSON, undefined when empty. */
+async function sent(req: IncomingMessage): Promise<unknown> {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk as Buffer);
+    const text = Buffer.concat(chunks).toString('utf8');
+    if (text === '') return undefined;
+    try {
+        return JSON.parse(text);
+    } catch {
+        return text;
+    }
+}
 
 function listen(server: Server): Promise<void> {
     return new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));

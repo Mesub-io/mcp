@@ -524,7 +524,11 @@ describe('authorization', () => {
                 result: {
                     isError: true,
                     content: [
-                        { text: 'Mesub error unavailable: Mesub did not answer within 100 ms.' },
+                        {
+                            text: expect.stringMatching(
+                                /^Mesub error unavailable: Mesub did not answer within 100 ms\. Temporary: /,
+                            ),
+                        },
                     ],
                 },
             });
