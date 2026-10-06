@@ -1,4 +1,5 @@
 import type { LogLevel } from './config.js';
+import { Secret } from './secret.js';
 
 export type LogFields = Record<string, unknown>;
 
@@ -13,6 +14,8 @@ export interface LoggerOptions {
     level: LogLevel;
     /** Where a line goes. Defaults to stdout. */
     write?: (line: string) => void;
+    /** Values scrubbed from every line as written, wherever they sit: the service secret. */
+    secrets?: readonly Secret[];
 }
 
 const REDACTED = '[redacted]';
@@ -22,15 +25,22 @@ const RANK: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 4
 const SECRET_KEY = /authorization|cookie|token|secret|password|api[-_]?key|signature|credential/i;
 // A bearer credential quoted inside a message or an error.
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
+// What Mesub issues to an agent, by its prefix: an access token, a refresh
+// token, an authorization code. Recognised without "Bearer" in front.
+const MESUB_TOKEN = /\bm(?:at|rt|ac)_[A-Za-z0-9_-]+/g;
 const MAX_DEPTH = 6;
 
 /**
  * A copy safe to log: every credential-named field is replaced, at any depth,
- * and so is a bearer token quoted inside a string.
+ * and so are a `Secret`, a bearer token and anything shaped like a token
+ * Mesub issues, quoted inside a string.
  */
 export function redact(value: unknown, depth = 0): unknown {
-    if (typeof value === 'string') return value.replace(BEARER, `Bearer ${REDACTED}`);
+    if (typeof value === 'string') {
+        return value.replace(BEARER, `Bearer ${REDACTED}`).replace(MESUB_TOKEN, REDACTED);
+    }
     if (typeof value !== 'object' || value === null) return value;
+    if (value instanceof Secret) return REDACTED;
     if (depth >= MAX_DEPTH) return '[truncated]';
 
     if (value instanceof Error) {
@@ -52,10 +62,20 @@ export function redact(value: unknown, depth = 0): unknown {
     );
 }
 
-/** One JSON object per line. Everything passes through `redact` first. */
+/**
+ * One JSON object per line. Everything passes through `redact` first, and the
+ * line itself through a last net: the literal secrets the logger was given.
+ */
 export function createLogger(options: LoggerOptions): Logger {
-    const write = options.write ?? ((line: string) => void process.stdout.write(`${line}\n`));
+    const out = options.write ?? ((line: string) => void process.stdout.write(`${line}\n`));
     const floor = RANK[options.level];
+    // As they read once JSON has escaped them. Longest first, should one contain another.
+    const literals = (options.secrets ?? [])
+        .map((secret) => JSON.stringify(secret.reveal()).slice(1, -1))
+        .filter((literal) => literal !== '')
+        .sort((a, b) => b.length - a.length);
+    const write = (line: string) =>
+        out(literals.reduce((safe, literal) => safe.replaceAll(literal, REDACTED), line));
 
     const log = (level: Exclude<LogLevel, 'silent'>, message: string, fields?: LogFields) => {
         if (RANK[level] < floor) return;

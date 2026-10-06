@@ -32,7 +32,14 @@ export async function start(dependencies: AppDependencies): Promise<RunningServe
     const { port } = server.address() as AddressInfo;
 
     if (!isLoopback(config.mesubApiUrl) && config.mesubApiUrl.startsWith('http:')) {
-        logger.warn('MESUB_API_URL is not https: access tokens travel in clear');
+        logger.warn(
+            'MESUB_API_URL is not https: access tokens and the service secret travel in clear',
+        );
+    }
+    if (!isLoopback(config.publicUrl) && config.clientIpHeader === undefined) {
+        logger.warn(
+            'CLIENT_IP_HEADER is not set: behind a proxy, every client counts as one address in the rate limits',
+        );
     }
     logger.info('listening', {
         name: SERVER_NAME,
@@ -40,7 +47,10 @@ export async function start(dependencies: AppDependencies): Promise<RunningServe
         host: config.host,
         port,
         publicUrl: config.publicUrl,
+        resourceUrl: config.resourceUrl,
+        issuerUrl: config.issuerUrl,
         mesubApiUrl: config.mesubApiUrl,
+        clientIpHeader: config.clientIpHeader ?? null,
     });
 
     let stopping: Promise<void> | undefined;

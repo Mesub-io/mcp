@@ -12,7 +12,7 @@ async function main(): Promise<void> {
         process.exit(1);
     }
 
-    const logger = createLogger({ level: config.logLevel });
+    const logger = createLogger({ level: config.logLevel, secrets: [config.serviceSecret] });
     const server = await start({ config, logger });
 
     const shutdown = (signal: string) => {
