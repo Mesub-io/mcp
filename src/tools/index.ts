@@ -11,6 +11,7 @@ import type { MesubClient } from '../mesub/client.js';
 import { MesubApiError } from '../mesub/errors.js';
 import { ping } from './ping.js';
 import { failure, success } from './result.js';
+import { searchDocs } from './search-docs.js';
 import type { ToolDefinition } from './tool.js';
 
 export interface ToolDependencies {
@@ -25,6 +26,7 @@ export interface ToolDependencies {
  */
 export function registerTools(server: McpServer, dependencies: ToolDependencies): void {
     register(server, ping, dependencies);
+    register(server, searchDocs, dependencies);
 }
 
 function register<Input extends z.ZodObject, Output extends z.ZodObject>(
