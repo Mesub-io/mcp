@@ -61,7 +61,7 @@ describe('the README', () => {
             /allowed origins? of the project/i,
             /agent_write_cap/,
             /devnet|mainnet/i,
-            /—/,
+            /\u2014/,
             /resend_webhook_delivery/,
         ]) {
             expect(readme).not.toMatch(gone);

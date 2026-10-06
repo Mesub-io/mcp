@@ -79,7 +79,7 @@ const REMOVED = [
     /agent_write_cap/i,
     /\/v1\/client/i,
     /devnet|mainnet/i,
-    /—/,
+    /\u2014/,
 ];
 
 describe('the descriptions an agent chooses from', () => {
@@ -188,7 +188,7 @@ describe('the scenarios in evals/', () => {
             expect(scenario.expect.says.length, scenario.id).toBeGreaterThan(8);
             expect(typeof scenario.expect.ask_first, scenario.id).toBe('boolean');
             // No em dash, here as everywhere.
-            expect(JSON.stringify(scenario), scenario.id).not.toMatch(/—/);
+            expect(JSON.stringify(scenario), scenario.id).not.toMatch(/\u2014/);
         }
     });
 
