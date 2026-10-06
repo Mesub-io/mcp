@@ -247,7 +247,7 @@ export class MesubClient {
 
     /**
      * `POST /agent/plans`: a plan for the merchant to sign. Nothing on chain.
-     * No slug, no receiver, no end: the API takes none from an agent.
+     * No slug and no receiver: the API takes neither from an agent.
      */
     preparePlan(
         plan: {
@@ -259,6 +259,10 @@ export class MesubClient {
             websiteUrl?: string | undefined;
             retryAttempts?: number | undefined;
             retryDelayMinutes?: number | undefined;
+            /** The only wallets the plan may pay, locked at signature. Left out: none is locked. */
+            destinations?: readonly string[] | undefined;
+            /** ISO 8601, UTC. Left out: no end. */
+            endsAt?: string | undefined;
         },
         signal?: AbortSignal,
     ): Promise<PreparedPlan> {

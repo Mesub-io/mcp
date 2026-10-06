@@ -114,13 +114,22 @@ export const planOutput = z.object({
     period_display: z
         .string()
         .describe('The period in words, such as "every month (30 days)". Quote this one.'),
-    ends_at: nullableDate.describe('Null: no end date.'),
+    ends_at: nullableDate.describe(
+        'Null: no end date. Else nobody has access after it, and subscriptions end there.',
+    ),
     retry_attempts: z.number().nullable().describe('Null with the delay: the built in policy.'),
     retry_delay_minutes: z.number().nullable(),
     retry_policy: z
         .object({ honoured: z.boolean(), reason: z.string().nullable() })
         .describe("Whether the project's tier retries a failed charge at all."),
     receiver: z.string().describe('The wallet the charges pay.'),
+    destinations: z
+        .array(z.string())
+        .describe(
+            'The only wallets the plan may ever pay: set when it is prepared or created, locked ' +
+                'once it is signed, never changed after. Empty: no list is locked, and the ' +
+                'merchant may change the receiving wallet in the dashboard.',
+        ),
     receiver_missing_since: nullableDate.describe(
         'Set while that wallet has no account for the mint: charges fail until it has one.',
     ),

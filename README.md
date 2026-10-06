@@ -113,8 +113,12 @@ What they have in common:
 
 - The agent gives a name, a price as a person writes it (`"9.99"`), a token by its symbol (USDC, USDT or PYUSD) and a period in hours. The server writes the price in the token's smallest unit itself, exactly. A raw amount is not an argument, so an agent cannot be wrong by a factor of a million.
 - Mesub keeps the plan as PENDING. Nothing is on chain, nobody can subscribe, nobody is charged.
-- The result gives the page of the dashboard where the merchant reviews the plan and signs it with their own wallet, and states the name, the price, the period and where the money goes from what Mesub answered, never from what the agent sent. A plan that comes back with another price, token or period than the one asked for is reported as an error, without its link.
-- It always pays the wallet the merchant connected to Mesub, and never has an end date. It cannot set a receiver, a slug or another token: the merchant does that in the dashboard.
+- The result gives the page of the dashboard where the merchant reviews the plan and signs it with their own wallet, and states the name, the price, the period, the wallets and the end from what Mesub answered, never from what the agent sent. A plan that comes back with another price, token or period than the one asked for is reported as an error, without its link.
+- Two things are the merchant's to decide, and the tool's description has the agent ask both before it calls, explain them and never answer for them:
+    - **The wallets the money may go to** (`destinations`, one to four addresses). With a list, the money can only ever go to one of those wallets for the whole life of the plan: the list is locked when the plan is signed and can never change, so nobody, not even with a stolen key, can make the plan pay anywhere else. Charges pay the first of the list by default. With none, the plan pays the wallet the merchant connected to Mesub, and they can change the receiving wallet later in the dashboard, which is more flexible and less locked. Only addresses the merchant typed are used.
+    - **Whether the plan ends** (`ends_at`). With no end it runs until the merchant closes it. With one, nobody has access after it, subscriptions end there, the last period is charged in full, and subscribers are told when they subscribe. A date written `2027-01-31` is read as the end of that day in UTC (23:59:59); an instant must carry its zone.
+- Both can be set at preparation only. The agent never chooses which wallet of the list is paid, and cannot set a slug or another token. A plan that comes back with other wallets or another end than the ones asked for is reported as an error, like one with another price.
+- From the link, the merchant can still change the name, the price, the period, the wallets and the end date, and add a logo, before signing. The agent cannot attach an image.
 
 ## What an agent can never do
 
@@ -122,8 +126,8 @@ Whatever it is asked, by the merchant or by anything it reads:
 
 - See or change the API key.
 - Change the project's tier, or delete the project.
-- Publish, edit, close or delete a plan, or give one an end date.
-- Change where the money goes.
+- Publish, edit, close or delete a plan. It sets the wallets a plan may pay and its end date once, when it prepares the plan and after asking the merchant, and can never change either afterwards.
+- Change where the money of an existing plan goes, choose which wallet of a locked list is paid, or send money to a wallet the merchant did not give.
 - Send an old webhook delivery again. That stays in the dashboard: it would let an agent pull past events, with subscribers' identifiers in them, to an address of its choice.
 - Cancel, pause, change or refund a customer's subscription. Only their own wallet cancels, the merchant cannot either, and Mesub never holds the money: there is no refund through Mesub.
 - Reach another project than the one the connection was made for.

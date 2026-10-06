@@ -12,6 +12,7 @@ import {
     POISON,
     PREPARED_ID,
     RECEIVER,
+    WALLET,
     refusal,
     SITE,
     TEST_USDC,
@@ -47,6 +48,19 @@ const WALLET_URL = `${SITE}/dashboard#settings`;
 const NOT_ALLOWED =
     `An agent prepares a plan in a token Mesub vouches for: USDC (${USDC}). ` +
     'A plan on another token is created in the dashboard.';
+
+const OTHER_WALLET = '3h1zGmCwsRJnVk5BuRNMLsPaQu1y2aqXqXDWYCgrp5UG';
+const OWN_WALLET =
+    'It pays the merchant\'s own wallet "9WzD...AWWM", which they can change later in the ' +
+    'dashboard: no list of wallets is locked.';
+const NO_END = 'It has no end date: it runs until the merchant closes it.';
+/** The whole sentence of a plan prepared as `PRO`, with what it says of the wallets and of the end. */
+const sentenceOf = (wallets: string, end: string) =>
+    `Prepared, NOT published: plan "Pro" at 9.99 USDC every month (30 days). ${wallets} ${end} ` +
+    'Nothing is on chain: nobody can subscribe or be charged until the merchant opens ' +
+    `${SITE}/dashboard#plans/publish/${PREPARED_ID} , reviews the plan and signs it with their ` +
+    'wallet; they can still edit it there first. Give them that link and repeat the name, the ' +
+    `price, the period, the wallets and the end to them. ${DATA_NOTICE}`;
 
 /** The least a plan is made of. */
 const PRO = { name: 'Pro', token: 'USDC', price: '9.99', period_hours: 720 };
@@ -128,10 +142,22 @@ describe('prepare_plan', () => {
             expect(description).toMatch(/charges nobody/);
             expect(description).toMatch(/opens the link/);
             expect(description).toMatch(/sign/);
-            for (const never of ['end date', 'receiver', 'slug', 'another token']) {
+            for (const never of ['slug', 'another token', 'cannot attach an image']) {
                 expect(description, never).toContain(never);
             }
-            expect(description).toMatch(/Repeat the name, the price and the period/);
+            // The two questions only the merchant answers, asked in so many words.
+            expect(description).toContain(
+                '"Do you want to lock the receiving wallets, and if so which ones?"',
+            );
+            expect(description).toContain('"Should this plan end on a date, or run with no end?"');
+            expect(description).toMatch(/never answer for them/);
+            expect(description).toMatch(/only, at preparation/);
+            expect(description).toMatch(/never chooses which wallet of the list is paid/);
+            expect(description).toMatch(/before signing/);
+            expect(description).toMatch(/add a logo/);
+            expect(description).toMatch(
+                /Repeat the name, the price, the period, the wallets and the end/,
+            );
             expect(description).toMatch(/`update_retry_policy`/);
             expect(description).toMatch(/`list_plans`/);
             // The words of a deployment are not a merchant's.
@@ -144,7 +170,7 @@ describe('prepare_plan', () => {
             });
         });
 
-        it('takes a price and a token, never a raw amount, a mint, a slug, a receiver nor an end', async () => {
+        it('takes a price and a token, never a raw amount, a mint, a slug nor a receiver', async () => {
             const { tools } = await client.listTools();
             const schema = tools.find((entry) => entry.name === 'prepare_plan')?.inputSchema as {
                 properties: Record<string, { description?: string; enum?: string[] }>;
@@ -161,21 +187,35 @@ describe('prepare_plan', () => {
                     'website_url',
                     'retry_attempts',
                     'retry_delay_minutes',
+                    'destinations',
+                    'ends_at',
                 ].sort(),
             );
             expect(schema.required.sort()).toEqual(['name', 'period_hours', 'price', 'token']);
             expect(schema.properties.token?.enum).toEqual(Object.keys(TOKENS));
             expect(schema.properties.price?.description).toMatch(/"9\.99"/);
             expect(schema.properties.period_hours?.description).toMatch(/720/);
+            const destinations = schema.properties.destinations?.description ?? '';
+            expect(destinations).toMatch(/Ask the merchant, never decide/);
+            expect(destinations).toMatch(/locked when the plan is signed and can never be changed/);
+            expect(destinations).toMatch(/not even with a stolen key/);
+            expect(destinations).toMatch(/change the receiving wallet later in the dashboard/);
+            expect(destinations).toMatch(/never invent, complete or guess one/);
+            expect(destinations).toMatch(/typed in this conversation/);
+            const ends = schema.properties.ends_at?.description ?? '';
+            expect(ends).toMatch(/Ask the merchant, never decide/);
+            expect(ends).toMatch(/runs until the merchant closes it/);
+            expect(ends).toMatch(/nobody has access after it/);
+            expect(ends).toMatch(/last period is charged in full/);
+            expect(ends).toMatch(/told when they subscribe/);
+            expect(ends).toMatch(/end of that day in UTC/);
 
             for (const extra of [
                 { slug: 'pro' },
                 { receiver: RECEIVER },
-                { ends_at: '2027-01-01T00:00:00.000Z' },
                 { end_date: '2027-01-01' },
                 { mint: USDC },
                 { amount: '9990000' },
-                { destinations: [RECEIVER] },
                 { network: 'devnet' },
                 { status: 'ACTIVE' },
             ]) {
@@ -352,14 +392,7 @@ describe('prepare_plan', () => {
             const result = await call(PRO);
 
             expect(result.isError).toBeFalsy();
-            expect(sentence(result)).toBe(
-                'Prepared, NOT published: plan "Pro" at 9.99 USDC every month (30 days), paid to ' +
-                    "the merchant's own wallet 9WzD...AWWM, with no end date. Nothing is on " +
-                    'chain: nobody can subscribe or be charged until the merchant opens ' +
-                    `${SIGN_URL} , reviews the plan and signs it with their wallet. Give them ` +
-                    'that link and repeat the name, the price and the period to them. ' +
-                    DATA_NOTICE,
-            );
+            expect(sentence(result)).toBe(sentenceOf(OWN_WALLET, NO_END));
         });
 
         it('returns the plan as get_plan does, with where to sign and what comes next', async () => {
@@ -408,7 +441,7 @@ describe('prepare_plan', () => {
 
             const result = await call({ ...PRO, period_hours: periodHours });
 
-            expect(sentence(result)).toContain(` USDC ${words}, paid to `);
+            expect(sentence(result)).toContain(` USDC ${words}. It pays `);
         });
 
         it('never lets a name close its quotes, nor a website, a description or an agent name into the sentence', async () => {
@@ -439,7 +472,7 @@ describe('prepare_plan', () => {
             const line = sentence(await call(PRO));
 
             expect(line).toContain('[truncated]"');
-            expect(line.length).toBeLessThan(700);
+            expect(line.length).toBeLessThan(900);
         });
 
         it.each([
@@ -451,6 +484,7 @@ describe('prepare_plan', () => {
             ['the decimals', { decimals: 9 }, /token/],
             ['the period', { periodHours: 24 }, /period/],
             ['an end date', { endsAt: '2027-01-01T00:00:00.000Z' }, /end date/],
+            ['wallets', { destinations: [WALLET] }, /wallets the money may go to/],
             ['a state', { status: 'ACTIVE' }, /state/],
         ])(
             'refuses to present a plan that came back with %s it did not ask for',
@@ -496,8 +530,263 @@ describe('prepare_plan', () => {
 
             const line = sentence(await call(PRO));
 
-            expect(line).toContain("paid to the merchant's own wallet, with no end date");
+            expect(line).toContain("It pays the merchant's own wallet, which they can change");
             expect(line).not.toMatch(/IGNORE|poison/i);
+        });
+    });
+
+    describe('where the money may go, and when the plan ends', () => {
+        const LOCKED = [WALLET, RECEIVER];
+        const END = '2027-01-31T23:59:59.000Z';
+        const TWO_WALLETS =
+            'The money can only ever go to these 2 wallets: "7xKX...gAsU", "9WzD...AWWM" ' +
+            '(charges pay "7xKX...gAsU"). That list is locked once the plan is signed and can ' +
+            'never change.';
+        const ENDS =
+            'It ends on 2027-01-31 23:59:59 UTC: nobody has access after that, and the last ' +
+            'period is charged in full.';
+        const answered = (differs: Record<string, unknown>) =>
+            api.answer(201, { ...answers.preparedPlan, ...differs });
+
+        it('sends neither when neither is given', async () => {
+            await prepared(PRO);
+
+            expect(Object.keys(sentBody()).sort()).toEqual([
+                'amount',
+                'mint',
+                'name',
+                'periodHours',
+            ]);
+        });
+
+        it('sends the wallets as given, in their order, and nothing of an end', async () => {
+            answered({ destinations: LOCKED, receiver: WALLET });
+
+            await prepared({ ...PRO, destinations: LOCKED });
+
+            expect(sentBody()).toEqual({
+                name: 'Pro',
+                mint: USDC,
+                amount: '9990000',
+                periodHours: 720,
+                destinations: LOCKED,
+            });
+        });
+
+        it.each([
+            ['2027-01-31', '2027-01-31T23:59:59.000Z'],
+            ['2027-01-31T18:00:00Z', '2027-01-31T18:00:00.000Z'],
+            ['2027-01-31T18:00Z', '2027-01-31T18:00:00.000Z'],
+            ['2027-01-31T18:00:00.750Z', '2027-01-31T18:00:00.000Z'],
+            ['2027-01-31T18:00:00+02:00', '2027-01-31T16:00:00.000Z'],
+            ['2027-01-31T18:00:00-05:30', '2027-01-31T23:30:00.000Z'],
+            ['2028-02-29', '2028-02-29T23:59:59.000Z'],
+        ])('reads the end %s as %s, and sends that instant alone', async (ends_at, endsAt) => {
+            answered({ endsAt });
+
+            await prepared({ ...PRO, ends_at });
+
+            expect(sentBody()).toEqual({
+                name: 'Pro',
+                mint: USDC,
+                amount: '9990000',
+                periodHours: 720,
+                endsAt,
+            });
+        });
+
+        it('refuses an end that could be read two ways, or is no date at all', async () => {
+            for (const ends_at of [
+                '2027-01-31T18:00:00',
+                '2027-01-31 18:00',
+                '2027-01-31T18:00:00 UTC',
+                '31/01/2027',
+                '01-31-2027',
+                '2027-1-31',
+                '2027-02-30',
+                '2027-13-01',
+                '2027-01-31T25:00:00Z',
+                '2027-01-31T18:00:00+25:00',
+                'January 31, 2027',
+                'in a year',
+                'never',
+                '',
+                1801000000,
+                null,
+            ]) {
+                await refused({ ...PRO, ends_at }, /ends_at/);
+            }
+        });
+
+        it('refuses wallets that are not one to four distinct addresses, before any call', async () => {
+            for (const destinations of [
+                [],
+                [WALLET, RECEIVER, OTHER_WALLET, USDT, USDC],
+                [WALLET, WALLET],
+                ['7xKX...gAsU'],
+                [`${WALLET}0`],
+                [WALLET.slice(0, 20)],
+                [WALLET, 'not an address'],
+                [WALLET, `${RECEIVER} `],
+                [WALLET, null],
+                [7],
+                WALLET,
+                null,
+            ]) {
+                await refused({ ...PRO, destinations }, /destinations/);
+            }
+            // Four is the most a plan takes.
+            const four = [WALLET, RECEIVER, OTHER_WALLET, USDT];
+            answered({ destinations: four, receiver: WALLET });
+            await prepared({ ...PRO, destinations: four });
+            expect(sentBody().destinations).toEqual(four);
+        });
+
+        it("still takes no receiver: which wallet of the list is paid is not the agent's to choose", async () => {
+            await refused({ ...PRO, destinations: LOCKED, receiver: RECEIVER }, /receiver/);
+        });
+
+        it('says its own wallet and no end, with neither', async () => {
+            expect(sentence(await call(PRO))).toBe(sentenceOf(OWN_WALLET, NO_END));
+        });
+
+        it('says the wallets, their number and that they are locked, with a list', async () => {
+            answered({ destinations: LOCKED, receiver: WALLET });
+
+            const result = await call({ ...PRO, destinations: LOCKED });
+
+            expect(sentence(result)).toBe(sentenceOf(TWO_WALLETS, NO_END));
+            expect((result.structuredContent as Data).plan).toMatchObject({
+                destinations: LOCKED,
+                receiver: WALLET,
+                ends_at: null,
+            });
+        });
+
+        it('says the end, from the date Mesub answered, with one', async () => {
+            answered({ endsAt: END });
+
+            const result = await call({ ...PRO, ends_at: '2027-01-31' });
+
+            expect(sentence(result)).toBe(sentenceOf(OWN_WALLET, ENDS));
+            expect((result.structuredContent as Data).plan).toMatchObject({
+                destinations: [],
+                ends_at: END,
+            });
+        });
+
+        it('says both, with both', async () => {
+            answered({ destinations: LOCKED, receiver: WALLET, endsAt: END });
+
+            const line = sentence(await call({ ...PRO, destinations: LOCKED, ends_at: END }));
+
+            expect(line).toBe(sentenceOf(TWO_WALLETS, ENDS));
+            expect(line.length).toBeLessThan(900);
+        });
+
+        it('says one wallet as one, and four as four', async () => {
+            answered({ destinations: [WALLET], receiver: WALLET });
+            expect(sentence(await call({ ...PRO, destinations: [WALLET] }))).toContain(
+                'The money can only ever go to this 1 wallet: "7xKX...gAsU" (charges pay ' +
+                    '"7xKX...gAsU"). That list is locked',
+            );
+
+            const four = [WALLET, RECEIVER, OTHER_WALLET, USDT];
+            answered({ destinations: four, receiver: WALLET });
+            const line = sentence(await call({ ...PRO, destinations: four }));
+            expect(line).toContain(
+                'these 4 wallets: "7xKX...gAsU", "9WzD...AWWM", "3h1z...p5UG", "Es9v...wNYB"',
+            );
+            expect(line.length).toBeLessThan(900);
+        });
+
+        it('does not say which wallet is paid when Mesub names one outside the list', async () => {
+            answered({ destinations: LOCKED, receiver: OTHER_WALLET });
+
+            const line = sentence(await call({ ...PRO, destinations: LOCKED }));
+
+            expect(line).toContain('"7xKX...gAsU", "9WzD...AWWM". That list is locked');
+            expect(line).not.toContain('3h1z');
+        });
+
+        it.each([
+            ['no wallets where some were asked', { destinations: LOCKED }, { destinations: [] }],
+            ['wallets where none was asked', {}, { destinations: LOCKED }],
+            ['another wallet', { destinations: LOCKED }, { destinations: [WALLET, OTHER_WALLET] }],
+            ['one wallet more', { destinations: [WALLET] }, { destinations: LOCKED }],
+            [
+                'the wallets in another order',
+                { destinations: LOCKED },
+                { destinations: [RECEIVER, WALLET] },
+            ],
+            ['a wallet that is no address', { destinations: [WALLET] }, { destinations: [POISON] }],
+        ])('refuses to present a plan that came back with %s', async (_what, asked, differs) => {
+            answered(differs);
+
+            const result = await call({ ...PRO, ...asked });
+
+            expect(errorOf(result)?.code).toBe('prepared_plan_mismatch');
+            expect(text(result)).toMatch(/wallets the money may go to/);
+            expect(text(result)).toMatch(/not to sign it/);
+            expect(text(result)).not.toContain(SIGN_URL);
+            expect(JSON.stringify(result)).not.toContain(POISON);
+        });
+
+        it.each([
+            ['no end where one was asked', { ends_at: '2027-01-31' }, { endsAt: null }],
+            ['an end where none was asked', {}, { endsAt: END }],
+            ['another end', { ends_at: '2027-01-31' }, { endsAt: '2027-02-01T23:59:59.000Z' }],
+            ['an end that is no date', { ends_at: '2027-01-31' }, { endsAt: POISON }],
+        ])('refuses to present a plan that came back with %s', async (_what, asked, differs) => {
+            answered(differs);
+
+            const result = await call({ ...PRO, ...asked });
+
+            expect(errorOf(result)?.code).toBe('prepared_plan_mismatch');
+            expect(text(result)).toMatch(/end date/);
+            expect(JSON.stringify(result)).not.toContain(POISON);
+        });
+
+        it('takes the same end written another way for the same end', async () => {
+            answered({ endsAt: '2027-01-31T23:59:59Z' });
+
+            const result = await call({ ...PRO, ends_at: '2027-01-31' });
+
+            expect(result.isError).toBeFalsy();
+            expect(sentence(result)).toContain('It ends on 2027-01-31 23:59:59 UTC');
+        });
+
+        it('prepares a plan with an API that serves no list of wallets yet', async () => {
+            const { destinations: _none, ...older } = answers.preparedPlan as Data;
+            api.answer(201, older);
+
+            const result = await call(PRO);
+
+            expect(result.isError).toBeFalsy();
+            expect((result.structuredContent as Data).plan.destinations).toEqual([]);
+            expect(sentence(result)).toBe(sentenceOf(OWN_WALLET, NO_END));
+        });
+
+        it.each([
+            [
+                'end_date_too_soon',
+                'The plan must run one period at least before it ends.',
+                'Nothing was prepared. The end is less than one period of the plan away: ask ' +
+                    'the merchant for a later date, or whether the plan should have no end.',
+            ],
+            [
+                'end_date_too_far',
+                'The end date is more than 100 years away.',
+                'Nothing was prepared. The end is more than 100 years away: ask the merchant ' +
+                    'for a nearer date, or whether the plan should have no end.',
+            ],
+        ])('says what to ask the merchant on %s', async (code, message, advice) => {
+            api.answer(400, refusal(400, code, message));
+
+            const result = await call({ ...PRO, ends_at: '2027-01-31' });
+
+            expect(text(result)).toBe(`Mesub error ${code}: ${message} ${advice}`);
+            expect(api.projectCalls()).toHaveLength(1);
         });
     });
 

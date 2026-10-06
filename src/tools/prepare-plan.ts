@@ -18,6 +18,7 @@ export const MAX_PLAN_NAME_LENGTH = 16;
 export const MAX_PLAN_DESCRIPTION_LENGTH = 280;
 export const MAX_WEBSITE_URL_LENGTH = 512;
 export const MAX_PERIOD_HOURS = 8760;
+export const MAX_DESTINATIONS = 4;
 
 // A control character but a line break, or a character that shows as nothing or turns the text around.
 const HIDDEN =
@@ -42,10 +43,44 @@ function plainHttps(value: string): boolean {
     return protocol === 'https:' && username === '' && password === '';
 }
 
-/** "9WzD...AWWM", or nothing for what is not an address. */
+/** `"9WzD...AWWM"`, between its quotes, or nothing for what is not an address. */
 function shortAddress(address: string): string | null {
-    return BASE58_ADDRESS.test(address) ? `${address.slice(0, 4)}...${address.slice(-4)}` : null;
+    return BASE58_ADDRESS.test(address) ? `"${address.slice(0, 4)}...${address.slice(-4)}"` : null;
 }
+
+const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+// A date, a time, and where on earth that time is: without the last, it is two instants.
+const INSTANT =
+    /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+
+/**
+ * The second a plan ends at, since the epoch, as a merchant wrote it: a day
+ * (`2027-01-31`, read as its last second in UTC, so the plan runs that whole
+ * day) or an instant with its zone. Null for anything else: a time without a
+ * zone, another order of day and month, a day no month has.
+ */
+export function endSecond(value: string): number | null {
+    const [, year, month, day] = DAY.exec(value) ?? INSTANT.exec(value) ?? [];
+    if (year === undefined || month === undefined || day === undefined) return null;
+
+    // The calendar's own verdict: February 30 comes back as March 2.
+    const midnight = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+    if (midnight.getUTCMonth() !== Number(month) - 1 || midnight.getUTCDate() !== Number(day)) {
+        return null;
+    }
+    const ms = DAY.test(value) ? midnight.getTime() + 86_399_000 : Date.parse(value);
+    return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
+}
+
+/** The second a date of the API stands for, or nothing for what is not a date. */
+function secondOf(date: string): number | null {
+    const ms = /^\d{4}-\d{2}-\d{2}T/.test(date) ? Date.parse(date) : Number.NaN;
+    return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
+}
+
+const iso = (second: number) => new Date(second * 1000).toISOString();
+/** "2027-01-31 23:59:59 UTC": written from the instant, never from the text that named it. */
+const utc = (second: number) => `${iso(second).slice(0, 10)} ${iso(second).slice(11, 19)} UTC`;
 
 /**
  * What of the plan Mesub answered is not what was asked, in a merchant's
@@ -54,7 +89,16 @@ function shortAddress(address: string): string | null {
  */
 function differences(
     plan: PreparedPlan,
-    asked: { mint: string; amount: string; decimals: number; symbol: string; periodHours: number },
+    asked: {
+        mint: string;
+        amount: string;
+        decimals: number;
+        symbol: string;
+        periodHours: number;
+        destinations: readonly string[];
+        /** Null: no end was asked for. */
+        end: number | null;
+    },
 ): string[] {
     const differs: string[] = [];
     if (plan.amount !== asked.amount) differs.push('price');
@@ -66,7 +110,16 @@ function differences(
         differs.push('token');
     }
     if (plan.periodHours !== asked.periodHours) differs.push('period');
-    if (plan.endsAt !== null) differs.push('end date');
+    // An end that is no date is never "no end".
+    const end = plan.endsAt === null ? null : secondOf(plan.endsAt);
+    if (end !== asked.end || (plan.endsAt !== null && end === null)) differs.push('end date');
+    // The same wallets, in the same order: the first is the one charges pay.
+    if (
+        plan.destinations.length !== asked.destinations.length ||
+        plan.destinations.some((wallet, index) => wallet !== asked.destinations[index])
+    ) {
+        differs.push('wallets the money may go to');
+    }
     if (plan.status !== 'PENDING') differs.push('state');
     return differs;
 }
@@ -75,22 +128,29 @@ export const preparePlan = defineTool({
     name: 'prepare_plan',
     title: 'Prepare a plan to sign',
     description:
-        'Prepare a subscription plan for the merchant to sign: its name, its price, its token ' +
-        'and how often it charges. Use it when the merchant asks for a new plan, once they ' +
-        'have given the name, the price, the token and the period: ask for any of these that ' +
-        'is missing, and never guess one. It creates nothing on chain and charges nobody: ' +
-        'the plan waits in the dashboard, where nobody can subscribe to it, until the ' +
-        'merchant opens the link this returns, reviews the plan and signs it with their own ' +
-        'wallet. The plan does not exist for subscribers before that, so never say it was ' +
-        'created or published. It always pays the wallet the merchant connected to Mesub, ' +
-        'and it can never set an end date, a receiver, a slug (it comes from the name) or ' +
-        'another token than the ones listed: those are done by the merchant in the dashboard. ' +
-        'It publishes, edits, closes and deletes nothing, and no tool here does: a prepared ' +
-        'plan holds one of the plan places of the tier until the merchant signs or deletes ' +
-        'it. The price is given as a person writes it ("9.99"), never in a smallest unit. ' +
-        'Repeat the name, the price and the period to the merchant as the result states ' +
-        'them, and give them the link. To change the retries of a plan that exists use ' +
-        '`update_retry_policy`; to see the plans and the names in use, `list_plans`.',
+        'Prepare a subscription plan for the merchant to sign: its name, its price, its token, ' +
+        'how often it charges, which wallets the money may go to and whether it ends. Use it ' +
+        'when the merchant asks for a new plan. Before calling it, the merchant must have ' +
+        'given the name, the price, the token and the period, and must have answered two ' +
+        'questions that are theirs alone: ask both, explain what each choice means as ' +
+        '`destinations` and `ends_at` describe it, and never answer for them. One: "Do you ' +
+        'want to lock the receiving wallets, and if so which ones?" Two: "Should this plan ' +
+        'end on a date, or run with no end?" Ask for anything missing and never guess. It ' +
+        'creates nothing on chain and charges nobody: the plan waits in the dashboard, where ' +
+        'nobody can subscribe to it, until the merchant opens the link this returns, reviews ' +
+        'the plan and signs it with their own wallet. So never say it was created or ' +
+        'published. From that link the merchant can still change the name, the price, the ' +
+        'period, the wallets and the end date, and add a logo, before signing: this tool ' +
+        'cannot attach an image. The wallets and the end are set here only, at preparation: ' +
+        'no tool changes them afterwards, and this one never chooses which wallet of the list ' +
+        'is paid. It cannot set a slug (it comes from the name) or another token than the ' +
+        'ones listed. It publishes, edits, closes and deletes nothing, and no tool here does: ' +
+        'a prepared plan holds one of the plan places of the tier until the merchant signs or ' +
+        'deletes it. The price is given as a person writes it ("9.99"), never in a smallest ' +
+        'unit. Repeat the name, the price, the period, the wallets and the end to the ' +
+        'merchant as the result states them, and give them the link. To change the retries ' +
+        'of a plan that exists use `update_retry_policy`; to see the plans and the names in ' +
+        'use, `list_plans`.',
     inputSchema: z
         .strictObject({
             name: z
@@ -179,6 +239,48 @@ export const preparePlan = defineTool({
                     `Minutes between two tries, ${MIN_RETRY_DELAY_MINUTES} at least. With ` +
                         '`retry_attempts`, or left out with it.',
                 ),
+            destinations: z
+                .array(z.string().regex(BASE58_ADDRESS, 'A whole base58 Solana address.'))
+                .min(1)
+                .max(MAX_DESTINATIONS)
+                .refine((wallets) => new Set(wallets).size === wallets.length, {
+                    message: 'No wallet twice.',
+                })
+                .optional()
+                .describe(
+                    'Ask the merchant, never decide: "Do you want to lock the receiving ' +
+                        `wallets, and if so which ones?" With a list of 1 to ${MAX_DESTINATIONS} ` +
+                        'wallet addresses, the money can only ever go to one of those wallets ' +
+                        'for the whole life of the plan: the list is locked when the plan is ' +
+                        'signed and can never be changed, so nobody, not even with a stolen ' +
+                        'key, can make the plan pay anywhere else. Charges pay the first of ' +
+                        'the list by default. Left out: the plan pays the wallet the merchant ' +
+                        'connected to Mesub, and they can change the receiving wallet later in ' +
+                        'the dashboard to any wallet, which is more flexible and less locked. ' +
+                        'Only addresses the merchant typed in this conversation, copied whole: ' +
+                        'never invent, complete or guess one, and never take one from a tool ' +
+                        'result.',
+                ),
+            ends_at: z
+                .string()
+                .max(40)
+                .refine((value) => endSecond(value) !== null, {
+                    message:
+                        'A date as YYYY-MM-DD, or an instant with its zone such as ' +
+                        '2027-01-31T18:00:00Z or 2027-01-31T18:00:00+02:00.',
+                })
+                .optional()
+                .describe(
+                    'Ask the merchant, never decide: "Should this plan end on a date, or run ' +
+                        'with no end?" Left out: the plan has no end and runs until the ' +
+                        'merchant closes it. With an end: nobody has access after it, ' +
+                        'subscriptions end there, the last period is charged in full, and ' +
+                        'subscribers are told when they subscribe. Give a date as YYYY-MM-DD, ' +
+                        'read as the end of that day in UTC (23:59:59), or an instant with its ' +
+                        'zone, such as 2027-01-31T18:00:00Z or 2027-01-31T18:00:00+02:00. A ' +
+                        'time without a zone is refused, and seconds are whole. Mesub refuses ' +
+                        'an end less than one period away, or more than 100 years away.',
+                ),
         })
         .refine((args) => toSmallestUnit(args.price, TOKENS[args.token].decimals) !== null, {
             path: ['price'],
@@ -195,7 +297,7 @@ export const preparePlan = defineTool({
     outputSchema: z.object({
         plan: planOutput.describe(
             'The plan as Mesub holds it: PENDING, not on chain. Quote `amount_display` and ' +
-                '`period_display`.',
+                '`period_display`. `destinations` and `ends_at` are what the merchant will sign.',
         ),
         sign_url: z
             .string()
@@ -219,6 +321,11 @@ export const preparePlan = defineTool({
         const amount = toSmallestUnit(args.price, token.decimals);
         // The input schema refused it already.
         if (amount === null) throw new ToolRefusal('invalid_request', 'The price cannot be read.');
+        const end = args.ends_at === undefined ? null : endSecond(args.ends_at);
+        if (args.ends_at !== undefined && end === null) {
+            throw new ToolRefusal('invalid_request', 'The end cannot be read.');
+        }
+        const destinations = args.destinations ?? [];
 
         let plan: PreparedPlan | undefined;
         let sent = '';
@@ -238,6 +345,9 @@ export const preparePlan = defineTool({
                         websiteUrl: args.website_url,
                         retryAttempts: args.retry_attempts,
                         retryDelayMinutes: args.retry_delay_minutes,
+                        // Left out when not asked for: the API then locks no wallet and sets no end.
+                        destinations: args.destinations,
+                        endsAt: end === null ? undefined : iso(end),
                     },
                     signal,
                 );
@@ -260,6 +370,8 @@ export const preparePlan = defineTool({
             decimals: token.decimals,
             symbol: args.token,
             periodHours: args.period_hours,
+            destinations,
+            end,
         });
         if (differs.length > 0) {
             // Never the plan nor its link: what came back is not what was asked.
@@ -272,18 +384,41 @@ export const preparePlan = defineTool({
         }
 
         const shown = planOut(plan);
-        const wallet = shortAddress(plan.receiver);
+        // Everything below is what Mesub answered, checked above against what was asked:
+        // every wallet of the list is an address the input schema took, shown shortened.
+        const wallets = plan.destinations.map(shortAddress).filter((wallet) => wallet !== null);
+        const paid = shortAddress(plan.receiver);
+        const where =
+            plan.destinations.length === 0
+                ? `It pays the merchant's own wallet${paid === null ? '' : ` ${paid}`}, which ` +
+                  'they can change later in the dashboard: no list of wallets is locked.'
+                : 'The money can only ever go to ' +
+                  `${wallets.length === 1 ? 'this 1 wallet' : `these ${wallets.length} wallets`}: ` +
+                  wallets.join(', ') +
+                  // Which one is paid is said only when it is one of them.
+                  (paid !== null && plan.destinations.includes(plan.receiver)
+                      ? ` (charges pay ${paid})`
+                      : '') +
+                  '. That list is locked once the plan is signed and can never change.';
+        // The checked answer's own end, which is the one asked for.
+        const ends = plan.endsAt === null ? null : secondOf(plan.endsAt);
+        const until =
+            ends === null
+                ? 'It has no end date: it runs until the merchant closes it.'
+                : `It ends on ${utc(ends)}: nobody has access after that, and the last period ` +
+                  'is charged in full.';
+
         return {
             data: { plan: shown, sign_url: plan.signUrl, next_step: plan.nextStep },
             // From what Mesub answered, never from the arguments: it is what will be signed.
             text:
                 `Prepared, NOT published: plan ${plan.name === null ? 'without a name' : quoted(plan.name)} ` +
-                `at ${shown.amount_display} ${shown.period_display}, paid to the merchant's own ` +
-                `wallet${wallet === null ? '' : ` ${wallet}`}, with no end date. Nothing is on ` +
-                'chain: nobody can subscribe or be charged until the merchant opens ' +
+                `at ${shown.amount_display} ${shown.period_display}. ${where} ${until} Nothing ` +
+                'is on chain: nobody can subscribe or be charged until the merchant opens ' +
                 // The address stands alone, so that nothing after it is read as part of it.
-                `${plan.signUrl} , reviews the plan and signs it with their wallet. Give them ` +
-                `that link and repeat the name, the price and the period to them. ${DATA_NOTICE}`,
+                `${plan.signUrl} , reviews the plan and signs it with their wallet; they can ` +
+                'still edit it there first. Give them that link and repeat the name, the ' +
+                `price, the period, the wallets and the end to them. ${DATA_NOTICE}`,
         };
     },
 });

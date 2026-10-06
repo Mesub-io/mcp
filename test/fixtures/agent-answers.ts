@@ -81,6 +81,7 @@ export const plan = {
     retryDelayMinutes: 60,
     retryPolicy: { honoured: true, reason: null },
     receiver: RECEIVER,
+    destinations: [],
     receiverMissingSince: null,
     createdAt: T,
     confirmedAt: T,

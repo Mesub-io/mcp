@@ -238,7 +238,8 @@ describe.each([
             const line = sentence(result);
 
             expect(line.length).toBeGreaterThan(10);
-            expect(line.length).toBeLessThan(600);
+            // prepare_plan states what a merchant is about to sign: the wallets, the end, the link.
+            expect(line.length).toBeLessThan(entry.tool === 'prepare_plan' ? 900 : 600);
             expect(line).not.toMatch(/poison|IGNORE|Fraise|hooks\.example/i);
             for (const value of [WALLET, PLAN_ID, SUBSCRIPTION_ID, WEBHOOK_ID, SECRET_VALUE]) {
                 expect(line).not.toContain(value);

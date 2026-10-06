@@ -98,6 +98,8 @@ export const MAX_DESCRIPTION_LENGTH = 1000;
 export const MAX_REASON_LENGTH = 300;
 export const MAX_EXCERPT_LENGTH = 500;
 export const MAX_DETAIL_LENGTH = 1000;
+/** Past the four wallets a plan locks, whatever the API comes to allow. */
+export const MAX_DESTINATIONS_READ = 16;
 /** Past any list of events an endpoint takes, whatever the API adds. */
 export const MAX_WEBHOOK_EVENTS = 64;
 /** An address is kept whole or refused: one cut short is another address. */
@@ -232,6 +234,13 @@ export const agentPlanSchema = z.object({
     retryDelayMinutes: count.nullable(),
     retryPolicy: z.object({ honoured: z.boolean(), reason: text(MAX_REASON_LENGTH).nullable() }),
     receiver: plain,
+    // The only wallets the plan may ever pay, locked once it is signed. Empty: none is locked.
+    // Absent from an API older than the list: empty then.
+    destinations: z
+        .array(plain)
+        .max(MAX_DESTINATIONS_READ)
+        .nullish()
+        .transform((value) => value ?? []),
     receiverMissingSince: date.nullable(),
     createdAt: date,
     confirmedAt: date.nullable(),

@@ -190,7 +190,9 @@ describe('hardening', () => {
                     const data = JSON.stringify(result.structuredContent);
                     if (data.includes('INJECTED x')) expect(data, where).toContain(TRUNCATED);
                     expect(unquoted(sentence(result)), where).not.toMatch(/INJECTED/);
-                    expect(sentence(result).length, where).toBeLessThan(700);
+                    expect(sentence(result).length, where).toBeLessThan(
+                        entry.tool === 'prepare_plan' ? 900 : 700,
+                    );
                 }
             },
             60_000,
@@ -291,12 +293,21 @@ describe('hardening', () => {
         });
 
         it('reads a plan of an API that serves no website nor who prepared it', async () => {
-            const { websiteUrl: _website, preparedBy: _by, ...older } = answers.plans[0] as Data;
+            const {
+                websiteUrl: _website,
+                preparedBy: _by,
+                destinations: _wallets,
+                ...older
+            } = answers.plans[0] as Data;
             api.answer(200, [older]);
 
             const data = (await call('list_plans')).structuredContent as Data;
 
-            expect(data.plans[0]).toMatchObject({ website_url: null, prepared_by: null });
+            expect(data.plans[0]).toMatchObject({
+                website_url: null,
+                prepared_by: null,
+                destinations: [],
+            });
         });
 
         it('returns who prepared a plan and its website as data, on every tool that returns a plan', async () => {
@@ -319,6 +330,39 @@ describe('hardening', () => {
                 expect(plan.period_display, tool).toBe('every month (30 days)');
                 expect(sentence(result), tool).not.toMatch(/Helper|IGNORE|fraise/i);
             }
+        });
+
+        it('returns the wallets a plan may pay, on every tool that returns a plan', async () => {
+            const locked = [answers.WALLET, answers.RECEIVER];
+            for (const [tool, answer, pick] of [
+                [
+                    'list_plans',
+                    [{ ...answers.plans[0], destinations: locked }],
+                    (d: Data) => d.plans[0],
+                ],
+                [
+                    'get_plan',
+                    { ...answers.planDetail, plan: { ...answers.plan, destinations: locked } },
+                    (d: Data) => d.plan,
+                ],
+                [
+                    'update_retry_policy',
+                    { ...answers.plan, destinations: locked },
+                    (d: Data) => d.plan,
+                ],
+            ] as const) {
+                api.answer(200, answer);
+
+                const result = await call(tool, caseOf(tool).args);
+
+                expect(pick(result.structuredContent).destinations, tool).toEqual(locked);
+                expect(sentence(result), tool).not.toContain('7xKX');
+            }
+            // A list longer than a plan can hold is not a plan's.
+            api.answer(200, [
+                { ...answers.plans[0], destinations: Array(17).fill(answers.WALLET) },
+            ]);
+            expect(codeOf(await call('list_plans'))).toBe('unexpected');
         });
 
         it('cuts the name of an agent that is too long, and refuses a website too long to be one', async () => {

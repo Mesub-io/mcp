@@ -106,7 +106,10 @@ describe('the descriptions an agent chooses from', () => {
     it('are long enough to choose from and short enough to read among 23', () => {
         for (const tool of TOOLS) {
             expect(tool.description.length, tool.name).toBeGreaterThan(200);
-            expect(tool.description.length, tool.name).toBeLessThan(1500);
+            // prepare_plan carries the two questions an agent must ask before calling it.
+            expect(tool.description.length, tool.name).toBeLessThan(
+                tool.name === 'prepare_plan' ? 2000 : 1500,
+            );
             expect(tool.title.length, tool.name).toBeLessThan(50);
         }
         const all = TOOLS.reduce((sum, tool) => sum + tool.description.length, 0);
@@ -172,6 +175,10 @@ describe('the descriptions an agent chooses from', () => {
     it('are counted right by the instructions every client reads', () => {
         expect(INSTRUCTIONS).toContain(`${TOOLS.length} tools`);
         expect(INSTRUCTIONS).toMatch(/`prepare_plan`/);
+        expect(INSTRUCTIONS).toMatch(/only at preparation, after asking/);
+        expect(INSTRUCTIONS).toMatch(/never chooses which wallet of the list is paid/);
+        expect(INSTRUCTIONS).toMatch(/never uses an address the merchant did not type/);
+        expect(INSTRUCTIONS).not.toMatch(/No tool gives a plan an end date/);
         expect(INSTRUCTIONS).toMatch(/nothing is on chain/i);
         expect(INSTRUCTIONS).toMatch(/UNKNOWN/);
     });
@@ -246,7 +253,7 @@ describe('the scenarios in evals/', () => {
             /tier|Business/,
             /[Dd]elete .*plan/,
             /[Rr]esend/,
-            /end date|ends on/,
+            /destinations/,
             /[Cc]ancel .*refund/,
         ]) {
             expect(asked).toMatch(never);

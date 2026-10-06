@@ -50,6 +50,18 @@ function prepareAdvice({ code, status, walletUrl }: Refused): string | undefined
         const where = walletUrl ? `at ${walletUrl} ,` : 'in the settings of the Mesub dashboard,';
         return `Nothing was prepared. Ask the merchant to connect their wallet ${where} then call again.`;
     }
+    if (code === 'end_date_too_soon') {
+        return (
+            'Nothing was prepared. The end is less than one period of the plan away: ask the ' +
+            'merchant for a later date, or whether the plan should have no end.'
+        );
+    }
+    if (code === 'end_date_too_far') {
+        return (
+            'Nothing was prepared. The end is more than 100 years away: ask the merchant for a ' +
+            'nearer date, or whether the plan should have no end.'
+        );
+    }
     if (code === 'mint_not_allowed') {
         return (
             'Nothing was prepared. This Mesub does not take that token from an agent: say ' +
