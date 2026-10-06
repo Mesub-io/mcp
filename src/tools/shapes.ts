@@ -14,7 +14,7 @@ import {
     type WebhookDelivery,
     type WebhookEndpoint,
 } from '../mesub/schemas.js';
-import { capped, MAX_ATTEMPTS, MAX_NESTED_ITEMS } from './limits.js';
+import { capped, MAX_ATTEMPTS, MAX_EARLIER, MAX_EARLIER_ATTEMPTS } from './limits.js';
 import { displayAmount, type AmountUnit } from './money.js';
 import { snake } from './snake.js';
 
@@ -184,7 +184,7 @@ export const subscriptionOutput = subscriptionRowOutput.extend({
 export function subscriptionOut(detail: AgentSubscription): z.input<typeof subscriptionOutput> {
     const { decimals } = detail;
     const attempts = capped(detail.attempts, MAX_ATTEMPTS);
-    const earlier = capped(detail.earlier, MAX_NESTED_ITEMS);
+    const earlier = capped(detail.earlier, MAX_EARLIER);
 
     return {
         ...subscriptionRowOut(detail),
@@ -198,7 +198,7 @@ export function subscriptionOut(detail: AgentSubscription): z.input<typeof subsc
         came_back_at: detail.cameBackAt,
         first_subscribed_at: detail.firstSubscribedAt,
         earlier: earlier.kept.map((row) => {
-            const charges = capped(row.attempts, MAX_NESTED_ITEMS);
+            const charges = capped(row.attempts, MAX_EARLIER_ATTEMPTS);
             return {
                 id: row.id,
                 status: row.status,

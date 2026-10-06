@@ -50,10 +50,7 @@ export function adviceFor({ code, status, retryable, retryAfterSeconds }: Refuse
     const seconds = retryAfterSeconds === null ? null : `${retryAfterSeconds} seconds`;
 
     if (code === 'agent_write_cap_reached') {
-        return (
-            'This connection made too many changes this hour: none goes through for ' +
-            `${seconds ?? 'a while'}. Reading still works.`
-        );
+        return `No change goes through on this connection for ${seconds ?? 'a while'}. Reading still works.`;
     }
     if (status === 429) {
         return `Too many calls on this connection: wait ${seconds ?? 'a minute'}, then call again.`;
