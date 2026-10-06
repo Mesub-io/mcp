@@ -1,65 +1,168 @@
 # Mesub MCP server
 
-Mesub is recurring payments on Solana, non-custodial. This is its [Model Context Protocol](https://modelcontextprotocol.io) server: it lets a merchant's AI agent read and act on one Mesub project, through tools.
+Mesub is recurring payments on Solana, non-custodial. This is its [Model Context Protocol](https://modelcontextprotocol.io) server: a merchant connects their AI tool to it, and the agent can then read one Mesub project and act on it, the way the merchant would in the dashboard.
 
-It is a thin layer over the Mesub HTTP API. A tool is one or a few calls to that API, and no business logic lives here.
+It is a thin layer over the Mesub HTTP API. A tool is one call to that API and a mapping of its answer: no business logic lives here.
+
+- [Status](#status)
+- [Connect](#connect)
+- [Tools](#tools)
+- [What an agent can never do](#what-an-agent-can-never-do)
+- [Security model](#security-model)
+- [Limits](#limits)
+- For whoever runs or changes the server: [How it works](#how-it-works), [How a connection works](#how-a-connection-works), [Run it locally](#run-it-locally), [Configuration](#configuration), [Development](#development), [Contributing](#contributing)
 
 ## Status
 
-Early, and not hosted yet. What exists: the transport, authorization, the tool registry, the client for the Mesub API, and 22 tools. `ping` and `search_docs` read no project; the other twenty read and change the project of the connection ([Tools](#tools)).
+**Not hosted yet.** Mesub will host this server: there is nothing to install and nothing to run on the merchant's side. Until it is, no address works, and the one written below is a placeholder.
 
-- Authorization is done here ([#2](https://github.com/Mesub-io/mcp/issues/2)): the server takes the access tokens Mesub issues and nothing else. It needs a Mesub API whose authorization server for agents is switched on (`MCP_RESOURCE_URL` and what goes with it, on its side).
-- Preparing a plan for the merchant to sign comes next ([#7](https://github.com/Mesub-io/mcp/issues/7)).
-- `search_docs` asks for a token like every other tool, though it reads no project: one rule for everything.
-- How to add the server to a client will be documented once it is hosted ([#9](https://github.com/Mesub-io/mcp/issues/9)).
+What exists in this repository: the transport, authorization, the client for the Mesub API, and 23 tools. What it is tested against, on every push, is a stand-in for the Mesub API. The routes it calls and the consent page in the dashboard are being merged on the Mesub side.
 
-## How it works
+## Connect
 
-- Streamable HTTP at `POST /mcp`, protocol revision 2026-07-28, with the official TypeScript SDK (`@modelcontextprotocol/server`). Clients of the 2025 revisions are served too.
-- No session: a fresh MCP server is built for every HTTP request, and any instance can answer any request. No session id is issued, and `GET` and `DELETE` on `/mcp` answer 405. What an instance keeps in memory never lets anyone in: see [Limits](#limits).
-- No API key, anywhere, and no tool takes a project id. The caller presents an access token issued by Mesub, bound to one project and to this server: see [How a connection works](#how-a-connection-works).
-- What a tool returns is data. A plan's name or a customer id is written by a merchant or their users, and is never an instruction: the server says so to every client, in its `instructions`.
-- `search_docs` searches the public docs without calling anything: an index of them is built from one commit of [Mesub-io/docs](https://github.com/Mesub-io/docs) and committed here, in `src/docs/index.json`. See [The docs index](#the-docs-index).
-- `GET /health` answers 200 with the server's name and version.
+For a merchant, once the server is hosted:
+
+1. Add the server's address to your AI tool, as a remote MCP server.
+2. The tool opens a Mesub page in your browser. Sign in to the dashboard.
+3. Choose one project. Nothing is chosen for you.
+4. Read what the page lists, then authorize.
+
+The address, a PLACEHOLDER until the server is hosted:
+
+```text
+https://mcp.mesub.io/mcp
+```
+
+A tool configured by a JSON file takes an entry like this one (some want `"type": "http"` beside the `url`):
+
+```json
+{
+    "mcpServers": {
+        "mesub": { "url": "<the address>" }
+    }
+}
+```
+
+A tool configured from a terminal takes the same two things, a name and the address. The words of the command are your tool's own, this is only its usual shape:
+
+```sh
+your-tool mcp add --transport http mesub <the address>
+```
+
+There is no API key to paste and none to create: the sign-in in the browser is the whole of it. An agent works on the project you chose and no other. To work on another project, connect again and choose it.
 
 ## Tools
 
-Each is one call to a route of the Mesub API under `/agent`, as the connection, and a mapping of its answer.
+23 tools. Each describes itself and its arguments to the agent, so there is nothing to learn: ask in plain words. The last column is what the server tells the AI tool about each one, from which the tool decides whether to ask its user first.
 
-| Tool                        | Route                                        | What it does                                             |
-| --------------------------- | -------------------------------------------- | -------------------------------------------------------- |
-| `ping`                      | `GET /health`                                | Whether the API answers.                                 |
-| `search_docs`               | none                                         | Searches the public docs.                                |
-| `get_project`               | `GET /agent/project`                         | The project, its tier and its usage.                     |
-| `list_plans`                | `GET /agent/plans`                           | The plans, with what each charges and collected.         |
-| `get_plan`                  | `GET /agent/plans/:id`                       | One plan, its failed charges and latest attempts.        |
-| `list_subscriptions`        | `GET /agent/subscriptions`                   | The subscriptions, by state, a page at a time.           |
-| `get_subscription`          | `GET /agent/subscriptions/:id`               | One subscription and every charge it ran.                |
-| `check_access`              | `GET /agent/access`                          | Whether a customer may use a plan.                       |
-| `list_events`               | `GET /agent/events`                          | The log: the days that had anything, or one day in full. |
-| `list_upcoming_charges`     | `GET /agent/events/upcoming`                 | What is scheduled, and which charges are at risk.        |
-| `get_overview`              | `GET /agent/overview`                        | Revenue, failures and recovery over 7, 30 or 90 days.    |
-| `list_webhooks`             | `GET /agent/webhooks`                        | The webhook endpoints, never their secret.               |
-| `list_webhook_deliveries`   | `GET /agent/webhooks/:id/deliveries`         | What was sent to one endpoint and what it answered.      |
-| `update_project`            | `PATCH /agent/project`                       | Renames the project. The name only.                      |
-| `update_retry_policy`       | `PATCH /agent/plans/:id/retry-policy`        | Sets or clears how a plan retries a failed charge.       |
-| `retry_charge`              | `POST /agent/subscriptions/:id/retry`        | Charges a late subscriber again, now. Moves money.       |
-| `create_webhook`            | `POST /agent/webhooks`                       | Registers an endpoint. Returns its secret.               |
-| `update_webhook`            | `PATCH /agent/webhooks/:id`                  | Changes an endpoint's URL, events or state.              |
-| `delete_webhook`            | `DELETE /agent/webhooks/:id`                 | Deletes an endpoint for good.                            |
-| `get_webhook_secret`        | `GET /agent/webhooks/:id/secret`             | Returns a signing secret in clear.                       |
-| `regenerate_webhook_secret` | `POST /agent/webhooks/:id/secret/regenerate` | Replaces a signing secret. The old one stops at once.    |
-| `send_test_webhook`         | `POST /agent/webhooks/:id/test`              | Posts one test webhook to an endpoint.                   |
+<!-- tools:start (written by `pnpm readme:tools`, do not edit) -->
+
+**Read** (14). They change nothing.
+
+| Tool                      | What it does                               | What a client is told |
+| ------------------------- | ------------------------------------------ | --------------------- |
+| `ping`                    | Check the Mesub API                        | Read-only             |
+| `search_docs`             | Search the Mesub documentation             | Read-only             |
+| `get_project`             | Read the project                           | Read-only             |
+| `list_plans`              | List the plans                             | Read-only             |
+| `get_plan`                | Read one plan                              | Read-only             |
+| `list_subscriptions`      | List the subscriptions                     | Read-only             |
+| `get_subscription`        | Read one subscription                      | Read-only             |
+| `check_access`            | Check a customer's access                  | Read-only             |
+| `list_events`             | Read the event log                         | Read-only             |
+| `list_upcoming_charges`   | List the upcoming charges                  | Read-only             |
+| `get_overview`            | Read how the project is doing              | Read-only             |
+| `list_webhooks`           | List the webhook endpoints                 | Read-only             |
+| `list_webhook_deliveries` | List the deliveries to a webhook endpoint  | Read-only             |
+| `get_webhook_secret`      | Reveal a webhook endpoint's signing secret | Read-only             |
+
+**Act** (8). They change the project, or make Mesub call a server of the merchant.
+
+| Tool                        | What it does                                | What a client is told                              |
+| --------------------------- | ------------------------------------------- | -------------------------------------------------- |
+| `update_project`            | Rename the project                          | Changes, marked destructive                        |
+| `update_retry_policy`       | Change a plan's retry policy                | Changes, marked destructive                        |
+| `retry_charge`              | Retry a failed charge                       | Changes, marked destructive, reaches outside Mesub |
+| `create_webhook`            | Create a webhook endpoint                   | Changes, reaches outside Mesub                     |
+| `update_webhook`            | Change a webhook endpoint                   | Changes, marked destructive, reaches outside Mesub |
+| `delete_webhook`            | Delete a webhook endpoint                   | Changes, marked destructive                        |
+| `regenerate_webhook_secret` | Replace a webhook endpoint's signing secret | Changes, marked destructive                        |
+| `send_test_webhook`         | Send a test webhook                         | Changes, reaches outside Mesub                     |
+
+**Prepare** (1). It leaves the merchant something to review and sign, and publishes nothing.
+
+| Tool           | What it does           | What a client is told |
+| -------------- | ---------------------- | --------------------- |
+| `prepare_plan` | Prepare a plan to sign | Changes               |
+
+<!-- tools:end -->
 
 What they have in common:
 
 - A result is the API's answer in snake_case, with nothing the tool's output schema does not name. An answer that is not what the route serves is a tool error (`unexpected`), never passed on.
-- A token amount is a string in the smallest unit of its mint, and has a display value beside it (`amount_display: "9.99 USDC"`), worked out on the digits and never through a float. When the API does not know the decimals of the mint, the display value is the raw amount and the mint, and says so.
+- A token amount is a string in the smallest unit of its mint, with a display value beside it (`amount_display: "9.99 USDC"`), worked out on the digits and never through a float. A plan's period has one too (`period_display: "every month (30 days)"`). When the API does not know the decimals of a mint, the display value is the raw amount and the mint, and says so.
 - A result is bounded: a text somebody else wrote is cut and marked ` [truncated]`, a list is capped, and a result says whether more exists and how to ask for it (`page`, `starting_after`, or a narrower filter).
+- A state, a tier or an outcome the API adds after this server was written does not fail a tool: it is returned as it is, in its field, and the sentence of the result says `UNKNOWN` for it. Types, lengths and what may be null are still held strictly.
 - The tools that charge a subscriber, delete, overwrite or redirect are marked destructive, and their description says to ask the merchant first. `get_webhook_secret`, `create_webhook` and `regenerate_webhook_secret` return a signing secret, which lands in the conversation.
-- A refusal of the API is a tool error with its `code`, its message and what to do: wait and how long (`rate_limited`, `agent_write_cap_reached`), correct the request, look the id up, or stop. Nothing is retried here.
+- A refusal of the API is a tool error with its `code`, its message and what to do: wait and how long (`rate_limited`), correct the request, look the id up, hand the merchant what only they can do, or stop. Nothing is retried here.
 - A token the API refuses to a tool after the check accepted it (revoked in between) is answered with the 401 and its challenge. A 2025 client, whose answer is already a stream by then, reads a tool error saying to connect again, and gets the 401 on its next request.
-- There is no tool to send an old webhook delivery again: that stays in the dashboard.
+
+### Preparing a plan
+
+`prepare_plan` is the one tool that makes something new, and it makes a draft:
+
+- The agent gives a name, a price as a person writes it (`"9.99"`), a token by its symbol (USDC, USDT or PYUSD) and a period in hours. The server writes the price in the token's smallest unit itself, exactly. A raw amount is not an argument, so an agent cannot be wrong by a factor of a million.
+- Mesub keeps the plan as PENDING. Nothing is on chain, nobody can subscribe, nobody is charged.
+- The result gives the page of the dashboard where the merchant reviews the plan and signs it with their own wallet, and states the name, the price, the period and where the money goes from what Mesub answered, never from what the agent sent. A plan that comes back with another price, token or period than the one asked for is reported as an error, without its link.
+- It always pays the wallet the merchant connected to Mesub, and never has an end date. It cannot set a receiver, a slug or another token: the merchant does that in the dashboard.
+
+## What an agent can never do
+
+Whatever it is asked, by the merchant or by anything it reads:
+
+- See or change the API key.
+- Change the project's tier, or delete the project.
+- Publish, edit, close or delete a plan, or give one an end date.
+- Change where the money goes.
+- Send an old webhook delivery again. That stays in the dashboard: it would let an agent pull past events, with subscribers' identifiers in them, to an address of its choice.
+- Cancel or change a customer's subscription. Only their wallet can.
+- Reach another project than the one the connection was made for.
+
+These are not tools switched off: the server has no such tool, and the Mesub API gives an agent no route to them.
+
+## Security model
+
+- **No API key.** The merchant signs in to the dashboard in their browser and authorizes the agent there. Nothing is pasted into the AI tool, and no tool here returns the API key.
+- **One project per connection.** The token names the project. No tool takes a project id.
+- **All or nothing.** A connected agent can use every tool listed above. There is no read-only mode: connect an agent only if you would let it do all of it.
+- **A one-hour token, renewed by the AI tool.** The server keeps none: it asks the Mesub API about the token on every request.
+- **A day without use cuts the connection.** While it is used it stays open.
+- **Revocable in the dashboard**, under Developers, then Connected agents. The agent's very next call is refused. What it changed before stays as it is.
+- **The server's own credential.** Every call to the Mesub API carries the agent's token and a service secret of this server, together. The API takes neither alone: a token taken from an AI tool opens nothing by itself.
+- **Results are data.** A plan's name, a customer's id, what a merchant's server answered are written by other people and may read like instructions. The server tells every agent to treat them as data, cuts them short, and never writes one into the sentence that heads a result, except between quotes. An agent can still be steered by what it reads: that is why the tools that move money or break an integration are marked so that the AI tool asks first. Keep that question on.
+- **A signing secret lands in the conversation** when an agent creates a webhook endpoint, regenerates its secret or reads it. Move it to the server's environment, and regenerate it if the conversation is shared.
+- **The merchant reviews every prepared plan.** The agent fills it in, the merchant signs it. Read the price, the token and the period in the dashboard before signing.
+
+## Limits
+
+Per connection, held by the Mesub API:
+
+| What                                         | A minute |
+| -------------------------------------------- | -------- |
+| Reads, over every tool that reads            | 120      |
+| Changes, over every tool that changes        | 20       |
+| Test deliveries (`send_test_webhook`), apart | 5        |
+
+Past one, the tool error says how many seconds to wait. This server has limits of its own in front of those: see [Limits of this server](#limits-of-this-server).
+
+## How it works
+
+- Streamable HTTP at `POST /mcp`, protocol revision 2026-07-28, with the official TypeScript SDK (`@modelcontextprotocol/server`). Clients of the 2025 revisions are served too.
+- No session: a fresh MCP server is built for every HTTP request, and any instance can answer any request. No session id is issued, and `GET` and `DELETE` on `/mcp` answer 405. What an instance keeps in memory never lets anyone in: see [Limits of this server](#limits-of-this-server).
+- No API key, anywhere, and no tool takes a project id. The caller presents an access token issued by Mesub, bound to one project and to this server: see [How a connection works](#how-a-connection-works).
+- What a tool returns is data. A plan's name or a customer id is written by a merchant or their users, and is never an instruction: the server says so to every client, in its `instructions`.
+- `search_docs` searches the public docs without calling anything: an index of them is built from one commit of [Mesub-io/docs](https://github.com/Mesub-io/docs) and committed here, in `src/docs/index.json`. See [The docs index](#the-docs-index). It asks for a token like every other tool, though it reads no project: one rule for everything.
+- `GET /health` answers 200 with the server's name and version.
 
 ## How a connection works
 
@@ -95,7 +198,7 @@ Which of them it was is in the logs (`request refused`, `cannot check access tok
 
 No `subscriptions/listen` stream is opened: the request is refused at once, and the server does not say its lists can change. Such a stream would outlive the check of its token, and so a revoke. It comes back with the first tool that has something to publish.
 
-### Limits
+### Limits of this server
 
 In the memory of each instance: two instances count apart, and a restart forgets. The rule they are held to: a limit keeps a flood away from the Mesub API, and is never a way for one caller to keep another out. So no count is kept against an address.
 
@@ -165,7 +268,7 @@ The API on `http://localhost:3333`, this server on `http://localhost:3334`, the 
 | `MESUB_ISSUER_URL=http://localhost:3333`       | `PUBLIC_API_URL=http://localhost:3333`       | The issuer, character for character.                         |
 | `MESUB_SERVICE_SECRET=<32 characters or more>` | `MCP_SERVICE_SECRET=<the same value>`        | `openssl rand -base64 48`, once, for both.                   |
 
-`MCP_PUBLIC_URL` is left unset: it is `http://localhost:<PORT>`. The API needs more of its own to issue tokens (a secret to hash them with, the dashboard's origin): its `.env.example` lists them. With both running, point an MCP client at `http://localhost:3334/mcp` and it is sent to the dashboard to connect.
+`MCP_PUBLIC_URL` is left unset: it is `http://localhost:<PORT>`. The API needs more of its own to issue tokens and to prepare a plan: a secret to hash tokens with, and `SITE_URL`, the dashboard's address, which is where a merchant signs in and where a prepared plan is signed. Its `.env.example` lists them. The names only are given here: a value is never committed, printed or pasted in an issue. With both running, point an MCP client at `http://localhost:3334/mcp` and it is sent to the dashboard to connect.
 
 Or in a container:
 
@@ -210,11 +313,14 @@ pnpm lint
 pnpm format:check
 pnpm test
 pnpm build
+pnpm readme:tools   # rewrite the list of tools above from the registry
 ```
 
 The pre-push hook runs the type check, the lint, the tests and the build. CI runs the same, plus the format check, on pull requests and on `main`.
 
 The tests start the real server on a free port, connect the SDK's own client to it over HTTP, and stand a local HTTP server in for the Mesub API: it checks the service secret and the token as the real `GET /agent/whoami` does, and a test issues, expires or revokes a token on it.
+
+`test/hardening.spec.ts` is the adversarial pass: an instruction planted in every text field of every answer, answers that are too long, a page or a redirect where an answer should be, a value the API adds to one of its lists, two connections at once. `evals/` holds what a good agent does with the tools, scenario by scenario, and `test/evals.spec.ts` holds the descriptions to it: see [evals/README.md](evals/README.md).
 
 ## The docs index
 
@@ -257,6 +363,7 @@ src/
     client.ts      the Mesub API as one caller: both credentials or none, one deadline, error mapping
     errors.ts      MesubApiError
     schemas.ts     what the tools read from the API, one schema per answer
+    link.ts        whether an address the API answered may be written in a sentence
   tools/
     tool.ts        what a tool is
     index.ts       the registry: every tool, registered in one place
@@ -266,12 +373,16 @@ src/
     <name>.ts      one file per tool: get-project.ts, retry-charge.ts, ...
     shapes.ts      what several tools return, and the mapping to it
     inputs.ts, webhook-inputs.ts   what several tools take
-    money.ts       an amount as a person reads it, exactly
+    money.ts       an amount as a person reads it, and a price in the smallest unit, exactly
+    period.ts      a period in words
+    tokens.ts      the tokens a plan may be prepared in
     snake.ts       the API's camelCase keys as snake_case
     limits.ts      how much a result may hold
   text.ts          cutting a text short, and the sentence about data
 scripts/
   build-docs-index.mjs  builds, checks and dates src/docs/index.json
+evals/
+  scenarios.json   what a good agent does: the tool it picks, when it asks, when it refuses
 test/
 ```
 
@@ -282,7 +393,13 @@ test/
 1. If the tool calls a route the client does not have yet, add its answer's schema to `src/mesub/schemas.ts` and one method to `MesubClient` in `src/mesub/client.ts`.
 2. Create `src/tools/<name>.ts`, copied from `src/tools/ping.ts`: name, title, description, input and output schemas, the four annotations, the handler.
 3. Add one `register(server, <tool>, dependencies)` line to `registerTools` in `src/tools/index.ts`.
-4. Test it in `test/`, against the fake Mesub API: the result, a Mesub error, and that the call carried both credentials.
+4. Test it in `test/`, against the fake Mesub API: the result, a Mesub error, and that the call carried both credentials. Its row in `test/tool-cases.ts` gives it the tests every tool has, the adversarial ones included.
+5. Add the scenarios an agent should pick it for to `evals/scenarios.json`, with the near misses against the tools it looks like.
+6. Run `pnpm readme:tools`.
+
+## Contributing
+
+Read [AGENTS.md](AGENTS.md) first: it holds the rules this server is built on, for a person or an agent, and a pull request is reviewed against it. An issue is welcome before a large change. The checks under [Development](#development) must pass, and the pre-push hook runs them.
 
 ## License
 
