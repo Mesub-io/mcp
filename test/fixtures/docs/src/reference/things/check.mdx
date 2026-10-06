@@ -1,0 +1,28 @@
+---
+title: "Check a thing"
+sidebarTitle: "Check thing"
+description: "Whether a thing is there. Always 200..."
+api: "GET /v1/things/{id}"
+hideTitle: true
+---
+
+import { Endpoint } from '../../components/api/endpoint'
+
+<Aside full>
+
+<RequestExample>
+
+```bash title="cURL" lines=false
+curl "https://api.example.com/v1/things/thing_1" \
+  -H "Authorization: Bearer $MESUB_API_KEY"
+```
+
+</RequestExample>
+
+</Aside>
+
+<Endpoint id="checkThing">
+
+Whether a thing is there. Always 200, there or not.
+
+</Endpoint>

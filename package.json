@@ -20,11 +20,14 @@
     "start": "node dist/main.js",
     "dev": "tsup --watch --onSuccess \"node dist/main.js\"",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint --deny-warnings src/ test/",
+    "lint": "oxlint --deny-warnings src/ test/ scripts/",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "docs:index": "node scripts/build-docs-index.mjs",
+    "docs:check": "node scripts/build-docs-index.mjs --check",
+    "docs:stale": "node scripts/build-docs-index.mjs --stale",
     "prepare": "husky || true"
   },
   "dependencies": {
