@@ -6,6 +6,7 @@ import type {
 } from '@modelcontextprotocol/server';
 import type * as z from 'zod';
 
+import { addressOf, callerOf, loggableName } from '../auth.js';
 import type { Logger } from '../logger.js';
 import type { MesubClient } from '../mesub/client.js';
 import { MesubApiError } from '../mesub/errors.js';
@@ -20,13 +21,22 @@ export interface ToolDependencies {
     mesubFor: (token: string) => MesubClient;
 }
 
+/** A tool, whatever its schemas. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyTool = ToolDefinition<any, any>;
+
 /**
  * Every tool this server has, in the order `tools/list` gives them. A new
  * tool is one file next to this one and one line here.
  */
-export function registerTools(server: McpServer, dependencies: ToolDependencies): void {
-    register(server, ping, dependencies);
-    register(server, searchDocs, dependencies);
+export const TOOLS: readonly AnyTool[] = [ping, searchDocs];
+
+export function registerTools(
+    server: McpServer,
+    dependencies: ToolDependencies,
+    tools: readonly AnyTool[] = TOOLS,
+): void {
+    for (const tool of tools) register(server, tool, dependencies);
 }
 
 function register<Input extends z.ZodObject, Output extends z.ZodObject>(
@@ -37,10 +47,13 @@ function register<Input extends z.ZodObject, Output extends z.ZodObject>(
     const { name, title, description, inputSchema, outputSchema, annotations } = tool;
 
     const call = async (args: unknown, context: ServerContext): Promise<CallToolResult> => {
+        // Set by the auth seam (src/auth.ts) for every request let through.
+        const authInfo = context.http?.authInfo;
+        const caller = callerOf(authInfo);
+        const started = performance.now();
+        let outcome = 'ok';
         try {
-            // Set by the auth seam (src/auth.ts) for every request let through.
-            const token = context.http?.authInfo?.token;
-            if (token === undefined) {
+            if (authInfo === undefined || caller === undefined) {
                 throw new MesubApiError('This call carries no access token.', {
                     status: 401,
                     code: 'unauthorized',
@@ -49,15 +62,30 @@ function register<Input extends z.ZodObject, Output extends z.ZodObject>(
             }
 
             // The SDK has validated the arguments against the input schema.
+            // The token stops here: a tool gets who it stands for, and a client
+            // that carries it, never the token itself.
             const { data, text } = await tool.handler(args as z.output<Input>, {
-                token,
-                mesub: mesubFor(token),
+                caller,
+                mesub: mesubFor(authInfo.token),
                 signal: context.mcpReq.signal,
             });
             // Parsed on the way out too: a field the schema does not name never leaves.
             return success(outputSchema.parse(data), text);
         } catch (error) {
+            outcome = error instanceof MesubApiError ? error.code : 'internal_error';
             return failure(error, name, logger);
+        } finally {
+            // The trace a token leaves: who called what, from where, and how it
+            // ended. Never an argument nor a result, which are the merchant's.
+            logger.info('tool call', {
+                tool: name,
+                outcome,
+                durationMs: Math.round(performance.now() - started),
+                connectionId: caller?.connectionId ?? null,
+                projectId: caller?.projectId ?? null,
+                clientName: caller ? loggableName(caller.clientName) : null,
+                address: addressOf(authInfo),
+            });
         }
     };
 

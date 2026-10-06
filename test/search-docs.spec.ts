@@ -10,11 +10,11 @@ import {
     NOTHING_MATCHED,
 } from '../src/tools/search-docs.js';
 import {
+    CHALLENGE,
     connect,
     fakeMesubApi,
     MODERN,
     post,
-    readJsonRpc,
     startServer,
     TOKEN,
     type FakeApi,
@@ -161,10 +161,10 @@ describe.each([
     });
 
     it('calls nothing: not the Mesub API, whatever is asked', async () => {
-        const before = api.calls.length;
         await call({ query: 'plan_ended' });
         await call({ query: 'kubernetes ingress' });
-        expect(api.calls).toHaveLength(before);
+        // Nothing but the checks of the token.
+        expect(api.calls.every((made) => made.path === '/agent/whoami')).toBe(true);
     });
 
     it('returns as many passages as asked, and no more than it may', async () => {
@@ -265,8 +265,8 @@ describe('search_docs, without a token', () => {
         );
 
         expect(response.status).toBe(401);
-        expect(response.headers.get('www-authenticate')).toBe('Bearer');
-        expect(JSON.stringify(await readJsonRpc(response))).not.toContain('docs.mesub.io');
+        expect(response.headers.get('www-authenticate')).toBe(CHALLENGE);
+        expect(await response.text()).not.toContain('docs.mesub.io');
 
         await server.stop();
     });

@@ -1,9 +1,8 @@
 import { createMcpHandler, McpServer, type McpHttpHandler } from '@modelcontextprotocol/server';
 
-import type { Config } from './config.js';
 import type { Logger } from './logger.js';
-import { MesubClient } from './mesub/client.js';
-import { registerTools } from './tools/index.js';
+import type { MesubClient } from './mesub/client.js';
+import { registerTools, type AnyTool } from './tools/index.js';
 import { SERVER_NAME, VERSION } from './version.js';
 
 /** A JSON-RPC message is small: a tool call's arguments, never a file. */
@@ -23,10 +22,11 @@ export const INSTRUCTIONS = [
 ].join(' ');
 
 export interface McpHandlerDependencies {
-    config: Config;
     logger: Logger;
-    /** Tests only: the fetch the Mesub client calls. */
-    fetch?: typeof fetch;
+    /** The Mesub API as the holder of a token the auth seam let through. */
+    mesubFor: (token: string) => MesubClient;
+    /** Tests only: the tools to register instead of the server's own. */
+    tools?: readonly AnyTool[];
 }
 
 /**
@@ -35,28 +35,37 @@ export interface McpHandlerDependencies {
  * any instance can answer any request of one client. Clients of the 2025
  * protocol revisions are served the same way, their `initialize` included;
  * no session id is ever issued, and GET and DELETE answer 405.
+ *
+ * It verifies no token: the auth seam (src/auth.ts) does, in front of it, and
+ * hands over who is calling.
  */
 export function createMesubMcpHandler(dependencies: McpHandlerDependencies): McpHttpHandler {
-    const { config, logger } = dependencies;
-
-    const mesubFor = (token: string) =>
-        new MesubClient({
-            baseUrl: config.mesubApiUrl,
-            token,
-            ...(dependencies.fetch && { fetch: dependencies.fetch }),
-        });
+    const { logger, mesubFor, tools } = dependencies;
 
     return createMcpHandler(
         () => {
             const server = new McpServer(
                 { name: SERVER_NAME, title: 'Mesub', version: VERSION },
-                { instructions: INSTRUCTIONS },
+                {
+                    instructions: INSTRUCTIONS,
+                    // The list of tools never changes while the server runs,
+                    // and no stream would be there to say it did.
+                    capabilities: { tools: { listChanged: false } },
+                },
             );
-            registerTools(server, { logger, mesubFor });
+            registerTools(server, { logger, mesubFor }, tools);
             return server;
         },
         {
             maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
+            // No `subscriptions/listen` stream is ever opened: each is refused
+            // at once. A stream is opened by one request and lives on, so its
+            // token would be checked once and it would outlive a revoke, and
+            // one caller could hold every stream of the instance. No tool
+            // publishes anything on one today. When one does, this comes back
+            // with a cap per connection and a re-check of the token while a
+            // stream is open.
+            maxSubscriptions: 0,
             onerror: (error) => logger.warn('mcp request rejected', { error }),
         },
     );

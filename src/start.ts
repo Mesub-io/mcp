@@ -32,7 +32,19 @@ export async function start(dependencies: AppDependencies): Promise<RunningServe
     const { port } = server.address() as AddressInfo;
 
     if (!isLoopback(config.mesubApiUrl) && config.mesubApiUrl.startsWith('http:')) {
-        logger.warn('MESUB_API_URL is not https: access tokens travel in clear');
+        logger.warn(
+            'MESUB_API_URL is plain http: access tokens and the service secret travel in clear, on a network MESUB_API_PRIVATE_NETWORK says is private',
+        );
+    }
+    if (!isLoopback(config.publicUrl) && config.publicUrl.startsWith('http:')) {
+        logger.warn(
+            'MCP_PUBLIC_URL is plain http: access tokens travel in clear between the clients and this server',
+        );
+    }
+    if (!isLoopback(config.publicUrl) && config.clientAddress.header === undefined) {
+        logger.warn(
+            'CLIENT_IP_HEADER is none: behind a proxy, every caller counts as one address. Nobody is refused for it, but tokens this instance has not seen yet share the few checks one address gets at a time',
+        );
     }
     logger.info('listening', {
         name: SERVER_NAME,
@@ -40,7 +52,16 @@ export async function start(dependencies: AppDependencies): Promise<RunningServe
         host: config.host,
         port,
         publicUrl: config.publicUrl,
+        resourceUrl: config.resourceUrl,
+        issuerUrl: config.issuerUrl,
         mesubApiUrl: config.mesubApiUrl,
+        clientAddress: config.clientAddress.header ?? 'socket peer',
+        trustedProxies: config.clientAddress.trustedProxies !== undefined,
+    });
+    // On a line of its own: the one value that must be the same on both sides.
+    logger.info('resource', {
+        resourceUrl: config.resourceUrl,
+        hint: "Tokens are taken for this resource only: the Mesub API's MCP_RESOURCE_URL must be exactly this.",
     });
 
     let stopping: Promise<void> | undefined;

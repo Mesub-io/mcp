@@ -1,5 +1,6 @@
 import type * as z from 'zod';
 
+import type { Caller } from '../auth.js';
 import type { MesubClient } from '../mesub/client.js';
 
 /**
@@ -17,11 +18,15 @@ export interface ToolAnnotations {
     openWorldHint: boolean;
 }
 
-/** What a handler gets besides its arguments. */
+/**
+ * What a handler gets besides its arguments. No credential: neither the
+ * agent's token nor the service secret is here, and `mesub` is the only way
+ * to the Mesub API.
+ */
 export interface ToolContext {
-    /** The caller's access token, passed through to Mesub. Never log it. */
-    token: string;
-    /** The Mesub API as this caller. */
+    /** Who the verified token stands for: the connection, its project, its client. */
+    caller: Caller;
+    /** The Mesub API as this caller: every call it makes carries both credentials. */
     mesub: MesubClient;
     /** Aborted when the caller cancels or disconnects. */
     signal: AbortSignal;
