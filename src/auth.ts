@@ -77,6 +77,31 @@ export interface Caller {
 
 const CALLER = 'mesub.io/caller';
 const ADDRESS = 'mesub.io/address';
+const REFUSAL = 'mesub.io/refusal';
+
+/** One per request: whether the API refused the token after the seam let it in. */
+interface Refusal {
+    refused: boolean;
+}
+
+function refusalOf(authInfo: AuthInfo | undefined): Refusal | undefined {
+    const refusal = authInfo?.extra?.[REFUSAL];
+    return typeof refusal === 'object' && refusal !== null ? (refusal as Refusal) : undefined;
+}
+
+/**
+ * Says that a route of the API refused this request's token
+ * (`invalid_agent_token`) after its check accepted it: the connection was
+ * revoked, or the token expired, between the two.
+ */
+export function markTokenRefused(authInfo: AuthInfo | undefined): void {
+    const refusal = refusalOf(authInfo);
+    if (refusal) refusal.refused = true;
+}
+
+export function tokenRefused(authInfo: AuthInfo | undefined): boolean {
+    return refusalOf(authInfo)?.refused === true;
+}
 
 /** The caller the seam vouched for, read back from what it handed the SDK. */
 export function callerOf(authInfo: AuthInfo | undefined): Caller | undefined {
@@ -168,6 +193,11 @@ export interface Authenticator {
      * address of the socket the request came on.
      */
     authenticate: (request: Request, peer: string | undefined) => Promise<AuthInfo | Response>;
+    /**
+     * The 401 with the challenge, for a request whose token the API refused
+     * while it ran (`tokenRefused`). The token is remembered as refused.
+     */
+    refuse: (authInfo: AuthInfo) => Response;
     /** The Mesub API as the holder of a token the seam let through. */
     mesubFor: (token: string) => MesubClient;
 }
@@ -488,8 +518,15 @@ export function createAuthenticator(dependencies: AuthDependencies): Authenticat
             expiresAt: whoami.expires_at,
             resource,
             resourceMetadataUrl,
-            extra: { [CALLER]: caller, [ADDRESS]: address },
+            extra: { [CALLER]: caller, [ADDRESS]: address, [REFUSAL]: { refused: false } },
         };
+    };
+
+    const refuse = (authInfo: AuthInfo): Response => {
+        refused.add(authInfo.token);
+        return challenge(addressOf(authInfo), 'refused_token_by_route', {
+            connectionId: callerOf(authInfo)?.connectionId ?? null,
+        });
     };
 
     return {
@@ -515,6 +552,7 @@ export function createAuthenticator(dependencies: AuthDependencies): Authenticat
         addressOf: (request, peer) => clientAddress(peer, request.headers, config.clientAddress),
         note,
         authenticate,
+        refuse,
         mesubFor,
     };
 }

@@ -6,7 +6,7 @@ import {
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 
-import { createAuthenticator } from './auth.js';
+import { createAuthenticator, tokenRefused } from './auth.js';
 import { isLoopback, type Config } from './config.js';
 import type { Logger } from './logger.js';
 import type { Limits } from './rate-limit.js';
@@ -160,7 +160,18 @@ export function createApp(dependencies: AppDependencies): App {
         const caller = await auth.authenticate(c.req.raw, c.env?.incoming?.socket?.remoteAddress);
         if (caller instanceof Response) return caller;
 
-        return mcp.fetch(c.req.raw, { authInfo: caller });
+        const response = await mcp.fetch(c.req.raw, { authInfo: caller });
+
+        // A tool's own call was refused `invalid_agent_token`: the connection
+        // was revoked, or the token expired, after the check above. The
+        // caller gets what a dead token gets, the 401 and its challenge, so
+        // its client refreshes or reconnects. Only when the answer is still
+        // ours to choose: one already streaming carries the tool error instead.
+        if (tokenRefused(caller)) {
+            void response.body?.cancel().catch(() => {});
+            return auth.refuse(caller);
+        }
+        return response;
     });
 
     app.notFound((c) => c.json({ error: 'not_found' }, 404));
