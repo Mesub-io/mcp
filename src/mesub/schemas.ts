@@ -116,6 +116,22 @@ const date = z.string().min(1).max(64);
 const count = z.number().int();
 /** Null: unknown, never zero. */
 const decimals = z.number().int().min(0).max(36).nullable();
+/**
+ * What a mint is called, served beside its decimals: null for a token Mesub
+ * does not vouch for, and for an API older than the field.
+ */
+const symbol = z
+    .string()
+    .max(20)
+    .nullish()
+    .transform((value) => value ?? null);
+/**
+ * A failure in Mesub's own words, served beside its code. Bounded like any
+ * other text. Null where there is none, and from an API older than the field.
+ */
+const reasonLabel = text(MAX_REASON_LENGTH)
+    .nullish()
+    .transform((value) => value ?? null);
 
 /** What every value of such a list looks like: one short plain word. */
 const CODE = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
@@ -250,6 +266,7 @@ const attemptSchema = z.object({
     id,
     outcome: code(),
     reason: text(MAX_REASON_LENGTH).nullable(),
+    reasonLabel,
     amount,
     amountUsd: usd.nullable(),
     signature: plain.nullable(),
@@ -270,7 +287,7 @@ export const agentPlanDetailSchema = z.object({
     collectedUsd: usd,
     unpricedPaid: count,
     outcomes: countsByCode(),
-    failures: z.array(z.object({ reason: text(MAX_REASON_LENGTH), count })),
+    failures: z.array(z.object({ reason: text(MAX_REASON_LENGTH), reasonLabel, count })),
     upcoming: z.array(
         z.object({ subscriber: plain, dueAt: date, failedPulls: count, retries: count }),
     ),
@@ -303,6 +320,7 @@ const subscriptionRowSchema = z.object({
     confirmedAt: date.nullable(),
     amount,
     mint: plain,
+    symbol,
     decimals,
 });
 export type AgentSubscriptionRow = z.infer<typeof subscriptionRowSchema>;
@@ -373,6 +391,7 @@ const accessAnswerSchema = z.object({
             z.object({
                 outcome: code(),
                 reason: text(MAX_REASON_LENGTH).nullable(),
+                reason_label: reasonLabel,
                 amount,
                 attempted_at: date,
                 signature: plain.nullable(),
@@ -415,8 +434,10 @@ export const agentEventLinesSchema = z.array(
         amount: amount.nullable(),
         amountUsd: usd.nullable(),
         mint: plain.nullable(),
+        symbol,
         decimals,
         reason: text(MAX_REASON_LENGTH).nullable(),
+        reasonLabel,
         retry: z.boolean(),
         signature: plain.nullable(),
         // A small JSON object: kept as the text of its JSON, cut short.
@@ -444,6 +465,7 @@ export const agentUpcomingSchema = z.array(
         retriesAllowed: count,
         amount: amount.nullable(),
         mint: plain,
+        symbol,
         decimals,
         amountUsd: usd.nullable(),
         renewalIssue: code().nullable(),
@@ -469,6 +491,11 @@ const totals = z.object({
 export const agentOverviewSchema = z.object({
     overview: z.object({
         days: z.number(),
+        // Whether the tier retries a failed charge by itself. Null: an API older than the field.
+        retriesAutomatic: z
+            .boolean()
+            .nullish()
+            .transform((value) => value ?? null),
         totals: z.object({ current: totals, previous: totals }),
         series: z.array(
             z.object({
@@ -505,6 +532,7 @@ export const agentOverviewSchema = z.object({
                 retriesAllowed: count,
                 amount,
                 mint: plain,
+                symbol,
                 decimals,
                 amountUsd: usd.nullable(),
             }),
@@ -528,6 +556,7 @@ export const agentOverviewSchema = z.object({
         causes: z.array(
             z.object({
                 reason: text(MAX_REASON_LENGTH),
+                reasonLabel,
                 owner: code(),
                 count,
                 amountUsd: usd,

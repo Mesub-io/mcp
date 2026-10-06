@@ -121,7 +121,7 @@ describe.each([
 
         expect(result.isError).toBe(true);
         expect(text(result)).toBe(
-            'Mesub error unavailable: Not answering: postgres Temporary: call again in 10 seconds.',
+            'Mesub error unavailable: Not answering: postgres. Temporary: call again in 10 seconds.',
         );
         expect(result.structuredContent).toBeUndefined();
         expect(result._meta?.[ERROR_META_KEY]).toEqual({

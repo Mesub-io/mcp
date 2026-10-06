@@ -139,6 +139,12 @@ export function adviceFor(refusal: Refused, tool?: string): string {
     return '';
 }
 
+/** A message of the API, ended: one that stops without punctuation would run into the advice. */
+function ended(message: string): string {
+    const said = message.trimEnd();
+    return said === '' || /[.!?]["')\]]?$/.test(said) ? said : `${said}.`;
+}
+
 function refused(error: Refused, tool: string): CallToolResult {
     const advice = adviceFor(error, tool);
     return {
@@ -146,7 +152,7 @@ function refused(error: Refused, tool: string): CallToolResult {
         content: [
             {
                 type: 'text',
-                text: `Mesub error ${error.code}: ${error.message}${advice === '' ? '' : ` ${advice}`}`,
+                text: `Mesub error ${error.code}: ${ended(error.message)}${advice === '' ? '' : ` ${advice}`}`,
             },
         ],
         _meta: { [ERROR_META_KEY]: error },

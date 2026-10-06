@@ -5,7 +5,7 @@ import { DATA_NOTICE, plural } from '../text.js';
 import { MAX_DAYS, planFilter, searchInput } from './inputs.js';
 import { capped, fit, MAX_LIST_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
-import { state } from './shapes.js';
+import { reason, reasonLabel, state, symbol } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -113,11 +113,10 @@ export const listEvents = defineTool({
                         .describe('The amount as a person reads it. Quote this one.'),
                     amount_usd: z.string().nullable(),
                     mint: z.string().nullable(),
+                    symbol,
                     decimals: z.number().nullable(),
-                    reason: z
-                        .string()
-                        .nullable()
-                        .describe('Why a charge failed, as a short code: data.'),
+                    reason: reason.nullable(),
+                    reason_label: reasonLabel,
                     retry: z.boolean(),
                     signature: z.string().nullable(),
                     detail: z
@@ -173,7 +172,7 @@ export const listEvents = defineTool({
         const { kept, truncated } = capped(lines, MAX_LIST_ITEMS);
         const events = kept.map((line) => ({
             ...snake(line),
-            amount_display: displayAmount(line.amount, line.decimals, { mint: line.mint }),
+            amount_display: displayAmount(line.amount, line.decimals, line),
         }));
         const data = {
             days: null,

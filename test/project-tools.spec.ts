@@ -133,6 +133,65 @@ describe.each([
         }
     });
 
+    it('say what a model got wrong when it ran against the real API', async () => {
+        const { tools } = await client.listTools();
+        const tool = (name: string) => tools.find((one) => one.name === name);
+        const description = (name: string) => tool(name)?.description ?? '';
+        const output = (name: string) => JSON.stringify(tool(name)?.outputSchema ?? {});
+        const input = (name: string) => JSON.stringify(tool(name)?.inputSchema ?? {});
+
+        // A reason is a code: the words beside it are what a person is shown.
+        for (const name of [
+            'get_subscription',
+            'retry_charge',
+            'get_plan',
+            'list_events',
+            'get_overview',
+            'check_access',
+        ]) {
+            expect(output(name), name).toMatch(/"reason_label"/);
+            expect(output(name), name).toMatch(/`reason_label`[^"]*to show a person/);
+            expect(output(name), name).toMatch(/the one to show a person/);
+        }
+
+        // The token of an amount, wherever a mint is.
+        for (const name of [
+            'get_subscription',
+            'list_subscriptions',
+            'retry_charge',
+            'list_events',
+            'list_upcoming_charges',
+            'get_overview',
+        ]) {
+            expect(output(name), name).toMatch(/"symbol"/);
+        }
+
+        // A tier that retries nothing by itself.
+        expect(output('get_overview')).toMatch(/"retries_automatic"/);
+        expect(output('get_overview')).toMatch(
+            /When `retries_automatic` is false nothing is retried by itself: the merchant fires a retry by hand \(`retry_charge`\)/,
+        );
+
+        // check_access serves charges raw, and says where the price is.
+        expect(description('check_access')).toMatch(/raw/);
+        expect(description('check_access')).toMatch(/`get_subscription` or `get_plan`/);
+        expect(output('check_access')).toMatch(/Raw[^"]*`get_subscription` or `get_plan`/);
+
+        // A row of the list is enough to know when a retry is allowed.
+        expect(description('retry_charge')).not.toMatch(/with `get_subscription` first/);
+        expect(description('retry_charge')).toMatch(
+            /`retry_available_at`[^.]*`list_subscriptions`[^.]* is enough/,
+        );
+        expect(description('retry_charge')).toMatch(/`get_subscription` adds the price to quote/);
+
+        // A made-up or a local address is refused by Mesub.
+        for (const name of ['create_webhook', 'update_webhook']) {
+            expect(description(name), name).toMatch(/resolve publicly/);
+            expect(description(name), name).toMatch(/made-up or local address is refused/);
+            expect(input(name), name).toMatch(/resolves publicly/);
+        }
+    });
+
     describe.each(CASES)('$tool', (entry) => {
         const answer = () => api.answer(entry.status, entry.answer);
 

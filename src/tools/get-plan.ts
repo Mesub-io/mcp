@@ -5,7 +5,7 @@ import { DATA_NOTICE, known, plural } from '../text.js';
 import { idInput } from './inputs.js';
 import { capped, MAX_NESTED_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
-import { attemptOut, attemptOutput, planOut, planOutput } from './shapes.js';
+import { attemptOut, attemptOutput, planOut, planOutput, reason, reasonLabel } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -51,9 +51,7 @@ export const getPlan = defineTool({
                     'subscriber side. BLOCKED: on ours.',
             ),
         failures: z
-            .array(
-                z.object({ reason: z.string().describe('A short code: data.'), count: z.number() }),
-            )
+            .array(z.object({ reason, reason_label: reasonLabel, count: z.number() }))
             .describe('Why charges failed, commonest first.'),
         upcoming: z
             .array(
@@ -104,7 +102,7 @@ export const getPlan = defineTool({
                 collected_usd: detail.collectedUsd,
                 unpriced_paid: detail.unpricedPaid,
                 outcomes: detail.outcomes,
-                failures: capped(detail.failures, MAX_NESTED_ITEMS).kept,
+                failures: snake(capped(detail.failures, MAX_NESTED_ITEMS).kept),
                 upcoming: snake(capped(detail.upcoming, MAX_NESTED_ITEMS).kept),
                 next_pull: detail.nextPull && {
                     due_at: detail.nextPull.dueAt,

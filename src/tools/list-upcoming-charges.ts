@@ -6,7 +6,7 @@ import { MAX_DAYS, planFilter, searchInput } from './inputs.js';
 import { capped, fit, MAX_LIST_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
 import { group } from './list-events.js';
-import { state } from './shapes.js';
+import { state, symbol } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -50,6 +50,7 @@ export const listUpcomingCharges = defineTool({
                     .nullable()
                     .describe('As a person reads it. Quote this one.'),
                 mint: z.string(),
+                symbol,
                 decimals: z.number().nullable(),
                 amount_usd: z.string().nullable(),
                 renewal_issue: state(

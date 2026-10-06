@@ -15,7 +15,9 @@ export const retryCharge = defineTool({
         "the merchant's, on chain, and cannot be taken back from here. Ask the merchant, " +
         'naming the subscription, before every call, and never call it in a loop over a ' +
         'list. It works only on a subscription that is behind on its payment (status ' +
-        'UNPAID) and not paused: read `retry_available_at` with `get_subscription` first. ' +
+        'UNPAID) and not paused. Its `retry_available_at` says when a retry is allowed, ' +
+        'and a row of `list_subscriptions` is enough to know it; `get_subscription` adds the ' +
+        'price to quote, the charges it ran and why they failed. ' +
         'Mesub limits retries by hand: a wait between two, which the refusal states ' +
         '("Try again in N minutes"), and on the Free tier three per missed period. A ' +
         'refusal means nothing was charged. The charge is queued, not settled: read ' +

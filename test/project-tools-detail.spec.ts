@@ -6,9 +6,11 @@ import { ERROR_META_KEY } from '../src/tools/result.js';
 import * as answers from './fixtures/agent-answers.js';
 import {
     DELIVERY_ID,
+    older,
     OTHER_MINT,
     PLAN_ID,
     POISON,
+    REASON_LABEL,
     refusal,
     SECRET_VALUE,
     SUBSCRIPTION_ID,
@@ -139,37 +141,136 @@ describe('the project tools, in detail', () => {
             expect(plan.plan.amount).toBe(amount);
         });
 
-        it('names the mint where the API serves decimals and no symbol', async () => {
+        it('names the token by its symbol wherever Mesub serves one beside the decimals', async () => {
             api.answer(200, answers.subscription);
+            const { subscription } = await data('get_subscription', {
+                subscription_id: SUBSCRIPTION_ID,
+            });
+            expect(subscription).toMatchObject({
+                amount_display: '9.99 USDC',
+                paid_display: '29.97 USDC',
+                mint: USDC,
+                symbol: 'USDC',
+                decimals: 6,
+            });
+            expect(subscription.attempts[0].amount_display).toBe('9.99 USDC');
+            expect(subscription.earlier[0].paid_display).toBe('9.99 USDC');
+            expect(subscription.earlier[0].attempts[0].amount_display).toBe('9.99 USDC');
+
+            api.answer(202, answers.subscription);
+            const retried = await data('retry_charge', { subscription_id: SUBSCRIPTION_ID });
+            expect(retried.subscription.amount_display).toBe('9.99 USDC');
+
+            api.answer(200, answers.subscriptionPage);
+            const { subscriptions } = await data('list_subscriptions');
+            expect(subscriptions).toHaveLength(2);
+            for (const row of subscriptions) {
+                expect(row).toMatchObject({ amount_display: '9.99 USDC', symbol: 'USDC' });
+            }
+
+            api.answer(200, answers.upcoming);
+            const { upcoming } = await data('list_upcoming_charges');
+            expect(upcoming[0]).toMatchObject({ amount_display: '9.99 USDC', symbol: 'USDC' });
+            // A token Mesub does not vouch for: served, and null.
+            expect(upcoming[1]).toMatchObject({ symbol: null, mint: OTHER_MINT });
+
+            api.answer(200, answers.eventLines);
+            const { events } = await data('list_events', { day: '2026-10-01' });
+            expect(events[0]).toMatchObject({
+                amount_display: '9.99 USDC',
+                mint: USDC,
+                symbol: 'USDC',
+                decimals: 6,
+            });
+            expect(events[1]).toMatchObject({ amount_display: null, symbol: null });
+
+            api.answer(200, answers.overview);
+            const { overview } = await data('get_overview');
+            expect(overview.next_up[0]).toMatchObject({
+                amount_display: '9.99 USDC',
+                symbol: 'USDC',
+            });
+        });
+
+        it('names the mint where Mesub vouches for no symbol, decimals known', async () => {
+            api.answer(200, { ...answers.subscription, symbol: null });
+            const { subscription } = await data('get_subscription', {
+                subscription_id: SUBSCRIPTION_ID,
+            });
+            expect(subscription.symbol).toBeNull();
+            expect(subscription.amount_display).toBe(`9.99 of mint ${USDC}`);
+
+            api.answer(200, [{ ...answers.eventLines[0], symbol: null }]);
+            const { events } = await data('list_events', { day: '2026-10-01' });
+            expect(events[0].amount_display).toBe(`9.99 of mint ${USDC}`);
+        });
+
+        it('refuses a symbol that is not a short text', async () => {
+            for (const symbol of [7, 'S'.repeat(21), { name: 'USDC' }]) {
+                api.answer(200, { ...answers.subscription, symbol });
+                expect(
+                    codeOf(await call('get_subscription', { subscription_id: SUBSCRIPTION_ID })),
+                ).toBe('unexpected');
+            }
+        });
+
+        it('names the mint where an older API serves decimals and no symbol at all', async () => {
+            api.answer(200, older(answers.subscription));
 
             const { subscription } = await data('get_subscription', {
                 subscription_id: SUBSCRIPTION_ID,
             });
 
+            expect(subscription.symbol).toBeNull();
             expect(subscription.amount_display).toBe(`9.99 of mint ${USDC}`);
             expect(subscription.paid_display).toBe(`29.97 of mint ${USDC}`);
             expect(subscription.attempts[0].amount_display).toBe(`9.99 of mint ${USDC}`);
             expect(subscription.earlier[0].paid_display).toBe(`9.99 of mint ${USDC}`);
         });
 
-        it('shows nothing where there is no amount, and never guesses decimals', async () => {
-            api.answer(200, answers.upcoming);
+        it('shows nothing where there is no amount, and never guesses decimals, on an older API too', async () => {
+            api.answer(200, older(answers.upcoming));
             const { upcoming } = await data('list_upcoming_charges');
-            expect(upcoming[0].amount_display).toBe(`9.99 of mint ${USDC}`);
+            expect(upcoming[0]).toMatchObject({
+                amount_display: `9.99 of mint ${USDC}`,
+                symbol: null,
+            });
             expect(upcoming[1]).toMatchObject({
                 amount: null,
                 amount_display: null,
                 decimals: null,
+                symbol: null,
             });
 
-            api.answer(200, answers.eventLines);
+            api.answer(200, older(answers.eventLines));
             const { events } = await data('list_events', { day: '2026-10-01' });
-            expect(events[0].amount_display).toBe(`9.99 of mint ${USDC}`);
+            expect(events[0]).toMatchObject({
+                amount_display: `9.99 of mint ${USDC}`,
+                symbol: null,
+            });
             expect(events[1].amount_display).toBeNull();
 
-            api.answer(200, answers.overview);
+            api.answer(200, older(answers.overview));
             const { overview } = await data('get_overview');
-            expect(overview.next_up[0].amount_display).toBe(`9.99 of mint ${USDC}`);
+            expect(overview.next_up[0]).toMatchObject({
+                amount_display: `9.99 of mint ${USDC}`,
+                symbol: null,
+            });
+
+            api.answer(200, older(answers.subscriptionPage));
+            const { subscriptions } = await data('list_subscriptions');
+            expect(subscriptions[0]).toMatchObject({
+                amount_display: `9.99 of mint ${USDC}`,
+                symbol: null,
+            });
+        });
+
+        it('shows an event of unknown decimals raw, with its mint and no symbol', async () => {
+            api.answer(200, [{ ...answers.eventLines[0], decimals: null, symbol: null }]);
+            const { events } = await data('list_events', { day: '2026-10-01' });
+            expect(events[0].amount_display).toBe(
+                `9990000 in the smallest unit of mint ${USDC} (decimals unknown)`,
+            );
         });
 
         it('refuses decimals that are not a whole number of digits', async () => {
@@ -241,7 +342,13 @@ describe('the project tools, in detail', () => {
 
             expect(plan.subscribers_by_status).toEqual({ ACTIVE: 11, UNPAID: 1 });
             expect(plan.outcomes).toEqual({ PAID: 40, REJECTED: 2 });
-            expect(plan.failures).toEqual([{ reason: `insufficient-balance ${POISON}`, count: 2 }]);
+            expect(plan.failures).toEqual([
+                {
+                    reason: `insufficient-balance ${POISON}`,
+                    reason_label: REASON_LABEL,
+                    count: 2,
+                },
+            ]);
             expect(plan.upcoming[0]).toEqual({
                 subscriber: WALLET,
                 due_at: '2026-11-01T12:00:00.000Z',
@@ -396,9 +503,147 @@ describe('the project tools, in detail', () => {
                 owner: 'subscriber',
                 amount_usd: '19.98',
             });
+            expect(overview.retries_automatic).toBe(true);
+            expect(sentence(result)).toMatch(
+                /^Over the last 30 days: 40 charges paid, 2 failed, 0 won back by a retry, 1 with a retry to come\. Now: 40 active, 2 late, 1 stopped\./,
+            );
+        });
+
+        it('never says a retry is to come on a tier that retries nothing by itself', async () => {
+            api.answer(200, {
+                ...answers.overview,
+                overview: { ...answers.overview.overview, retriesAutomatic: false },
+            });
+
+            const result = await call('get_overview');
+            const { overview } = result.structuredContent as Data;
+
+            expect(overview.retries_automatic).toBe(false);
+            // The count is still served, as the API counts it.
+            expect(overview.totals.current.retry_to_come).toBe(1);
+            expect(sentence(result)).toMatch(
+                /^Over the last 30 days: 40 charges paid, 2 failed, 0 won back by a retry\. Nothing is retried by itself on this tier: a late charge waits for a retry by hand \(retry_charge\)\. Now: 40 active, 2 late, 1 stopped\./,
+            );
+            expect(sentence(result)).not.toMatch(/retry to come|scheduled|pending/);
+        });
+
+        it('says nothing of retries to come where an older API does not say whether the tier retries', async () => {
+            api.answer(200, older(answers.overview));
+
+            const result = await call('get_overview');
+            const { overview, collection } = result.structuredContent as Data;
+
+            expect(overview.retries_automatic).toBeNull();
+            expect(collection.causes[0].reason_label).toBeNull();
             expect(sentence(result)).toMatch(
                 /^Over the last 30 days: 40 charges paid, 2 failed, 0 won back by a retry\. Now: 40 active, 2 late, 1 stopped\./,
             );
+        });
+
+        it('refuses a word on retries that is not yes or no', async () => {
+            for (const retriesAutomatic of ['yes', 1, {}]) {
+                api.answer(200, {
+                    ...answers.overview,
+                    overview: { ...answers.overview.overview, retriesAutomatic },
+                });
+                expect(codeOf(await call('get_overview'))).toBe('unexpected');
+            }
+        });
+
+        it("puts a failure in Mesub's own words beside its code, and never in a sentence", async () => {
+            api.answer(200, answers.subscription);
+            const one = await call('get_subscription', { subscription_id: SUBSCRIPTION_ID });
+            const { subscription } = one.structuredContent as Data;
+            expect(subscription.attempts[0]).toMatchObject({
+                reason: `insufficient-balance ${POISON}`,
+                reason_label: REASON_LABEL,
+            });
+            expect(subscription.attempts[1]).toMatchObject({ reason: null, reason_label: null });
+            expect(subscription.earlier[0].attempts[0].reason_label).toBeNull();
+
+            api.answer(200, answers.planDetail);
+            const plan = await call('get_plan', { plan_id: PLAN_ID });
+            expect((plan.structuredContent as Data).attempts[0].reason_label).toBe(REASON_LABEL);
+            expect((plan.structuredContent as Data).failures[0].reason_label).toBe(REASON_LABEL);
+
+            api.answer(200, answers.eventLines);
+            const day = await call('list_events', { day: '2026-10-01' });
+            expect((day.structuredContent as Data).events[0].reason_label).toBe(REASON_LABEL);
+            expect((day.structuredContent as Data).events[1].reason_label).toBeNull();
+
+            api.answer(200, answers.overview);
+            const overview = await call('get_overview');
+            expect((overview.structuredContent as Data).collection.causes[0]).toMatchObject({
+                reason: `insufficient-balance ${POISON}`,
+                reason_label: REASON_LABEL,
+            });
+
+            api.answer(200, answers.accessList);
+            const access = await call('check_access', { wallet: WALLET, attempts: true });
+            expect((access.structuredContent as Data).plans[0].attempts[0]).toMatchObject({
+                reason: `insufficient-balance ${POISON}`,
+                reason_label: REASON_LABEL,
+                amount: '9990000',
+            });
+
+            for (const result of [one, plan, day, overview, access]) {
+                expect(sentence(result)).not.toContain(REASON_LABEL);
+            }
+        });
+
+        it('returns the code alone, its words null, from an older API that serves none', async () => {
+            api.answer(200, older(answers.subscription));
+            const { subscription } = await data('get_subscription', {
+                subscription_id: SUBSCRIPTION_ID,
+            });
+            expect(subscription.attempts[0]).toMatchObject({
+                reason: `insufficient-balance ${POISON}`,
+                reason_label: null,
+            });
+
+            api.answer(200, older(answers.planDetail));
+            const plan = await data('get_plan', { plan_id: PLAN_ID });
+            expect(plan.failures).toEqual([
+                { reason: `insufficient-balance ${POISON}`, reason_label: null, count: 2 },
+            ]);
+            expect(plan.attempts[0].reason_label).toBeNull();
+
+            api.answer(200, older(answers.eventLines));
+            const { events } = await data('list_events', { day: '2026-10-01' });
+            expect(events[0].reason_label).toBeNull();
+
+            api.answer(200, older(answers.accessList));
+            const access = await data('check_access', { wallet: WALLET, attempts: true });
+            expect(access.plans[0].attempts[0]).toMatchObject({
+                reason: `insufficient-balance ${POISON}`,
+                reason_label: null,
+            });
+        });
+
+        it("cuts Mesub's words for a failure when they are too long, like any other text", async () => {
+            const long = 'w'.repeat(5000);
+            api.answer(200, {
+                ...answers.subscription,
+                attempts: [{ ...answers.attempt, reasonLabel: long }],
+            });
+            const { subscription } = await data('get_subscription', {
+                subscription_id: SUBSCRIPTION_ID,
+            });
+            expect(subscription.attempts[0].reason_label).toBe(`${'w'.repeat(300)}${TRUNCATED}`);
+
+            api.answer(200, {
+                plans: [
+                    {
+                        ...answers.accessAnswer,
+                        attempts: [
+                            { ...answers.accessList.plans[0]?.attempts[0], reason_label: long },
+                        ],
+                    },
+                ],
+                revalidate_after: 60,
+            });
+            const access = await data('check_access', { wallet: WALLET, attempts: true });
+            expect(access.plans[0].attempts[0].reason_label).toBe(`${'w'.repeat(300)}${TRUNCATED}`);
         });
 
         it('never returns a secret with an endpoint that is only listed or updated', async () => {
@@ -1030,6 +1275,32 @@ describe('the project tools, in detail', () => {
             expect(text(result)).toMatch(
                 new RegExp(`^Mesub error conflict: ${message.replace('.', '\\.')}`),
             );
+        });
+
+        it.each([
+            ['The url is not reachable', 'The url is not reachable.'],
+            ['The url is not reachable  ', 'The url is not reachable.'],
+            ['The url is not reachable.', 'The url is not reachable.'],
+            ['Is the url reachable?', 'Is the url reachable?'],
+            ['The url is not reachable!', 'The url is not reachable!'],
+            ['Mesub said "The url is not reachable."', 'Mesub said "The url is not reachable."'],
+            [
+                'url must be a URL address; events must be an array',
+                'url must be a URL address; events must be an array.',
+            ],
+        ])('ends the message %j with a full stop before its advice', async (message, said) => {
+            api.answer(400, refusal(400, 'invalid_request', message));
+
+            const result = await call('create_webhook', {
+                url: HOOK_URL,
+                events: ['subscription.created'],
+            });
+
+            expect(text(result)).toBe(
+                `Mesub error invalid_request: ${said} Correct the request before calling again.`,
+            );
+            // The message itself is carried as Mesub wrote it.
+            expect(result._meta?.[ERROR_META_KEY]).toMatchObject({ message });
         });
 
         it('reads the code and never the message', async () => {
