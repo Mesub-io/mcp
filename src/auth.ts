@@ -82,6 +82,8 @@ const REFUSAL = 'mesub.io/refusal';
 /** One per request: whether the API refused the token after the seam let it in. */
 interface Refusal {
     refused: boolean;
+    /** Keeps the token as refused, so its next request is not asked about again. */
+    remember: () => void;
 }
 
 function refusalOf(authInfo: AuthInfo | undefined): Refusal | undefined {
@@ -92,11 +94,14 @@ function refusalOf(authInfo: AuthInfo | undefined): Refusal | undefined {
 /**
  * Says that a route of the API refused this request's token
  * (`invalid_agent_token`) after its check accepted it: the connection was
- * revoked, or the token expired, between the two.
+ * revoked, or the token expired, between the two. The token is remembered
+ * as refused: its next request gets the 401 without the API being asked.
  */
 export function markTokenRefused(authInfo: AuthInfo | undefined): void {
     const refusal = refusalOf(authInfo);
-    if (refusal) refusal.refused = true;
+    if (refusal === undefined) return;
+    refusal.refused = true;
+    refusal.remember();
 }
 
 export function tokenRefused(authInfo: AuthInfo | undefined): boolean {
@@ -195,7 +200,7 @@ export interface Authenticator {
     authenticate: (request: Request, peer: string | undefined) => Promise<AuthInfo | Response>;
     /**
      * The 401 with the challenge, for a request whose token the API refused
-     * while it ran (`tokenRefused`). The token is remembered as refused.
+     * while it ran (`tokenRefused`).
      */
     refuse: (authInfo: AuthInfo) => Response;
     /** The Mesub API as the holder of a token the seam let through. */
@@ -518,12 +523,15 @@ export function createAuthenticator(dependencies: AuthDependencies): Authenticat
             expiresAt: whoami.expires_at,
             resource,
             resourceMetadataUrl,
-            extra: { [CALLER]: caller, [ADDRESS]: address, [REFUSAL]: { refused: false } },
+            extra: {
+                [CALLER]: caller,
+                [ADDRESS]: address,
+                [REFUSAL]: { refused: false, remember: () => refused.add(token) },
+            },
         };
     };
 
     const refuse = (authInfo: AuthInfo): Response => {
-        refused.add(authInfo.token);
         return challenge(addressOf(authInfo), 'refused_token_by_route', {
             connectionId: callerOf(authInfo)?.connectionId ?? null,
         });

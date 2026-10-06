@@ -165,8 +165,9 @@ export function createApp(dependencies: AppDependencies): App {
         // A tool's own call was refused `invalid_agent_token`: the connection
         // was revoked, or the token expired, after the check above. The
         // caller gets what a dead token gets, the 401 and its challenge, so
-        // its client refreshes or reconnects. Only when the answer is still
-        // ours to choose: one already streaming carries the tool error instead.
+        // its client refreshes or reconnects. A 2025 client is answered on a
+        // stream that has started by then: it reads the tool error, which
+        // says to connect again, and gets the 401 on its next request.
         if (tokenRefused(caller)) {
             void response.body?.cancel().catch(() => {});
             return auth.refuse(caller);
