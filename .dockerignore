@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+test
+.git
+.github
+.husky
+.env
+.env.*
+*.md
+Dockerfile
+.dockerignore

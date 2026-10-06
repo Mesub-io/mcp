@@ -1,0 +1,9 @@
+node_modules
+dist
+coverage
+.env
+.env.*
+!.env.example
+.DS_Store
+# iCloud's numbered copies of files in ~/Documents.
+* [0-9].*
