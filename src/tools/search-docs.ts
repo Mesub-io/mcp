@@ -21,7 +21,8 @@ const search = new DocsSearch(DOCS_INDEX);
 /**
  * The one tool that calls nothing: it searches the index of the public docs
  * this build carries (src/docs/index.json). It reads no project, so it uses
- * neither the token nor the Mesub API it is handed.
+ * neither the caller nor the Mesub API it is handed. It needs a valid token
+ * all the same, like every tool.
  */
 export const searchDocs = defineTool({
     name: 'search_docs',

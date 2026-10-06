@@ -1,9 +1,8 @@
 import { createMcpHandler, McpServer, type McpHttpHandler } from '@modelcontextprotocol/server';
 
-import type { Config } from './config.js';
 import type { Logger } from './logger.js';
-import { MesubClient } from './mesub/client.js';
-import { registerTools } from './tools/index.js';
+import type { MesubClient } from './mesub/client.js';
+import { registerTools, type AnyTool } from './tools/index.js';
 import { SERVER_NAME, VERSION } from './version.js';
 
 /** A JSON-RPC message is small: a tool call's arguments, never a file. */
@@ -23,10 +22,11 @@ export const INSTRUCTIONS = [
 ].join(' ');
 
 export interface McpHandlerDependencies {
-    config: Config;
     logger: Logger;
-    /** Tests only: the fetch the Mesub client calls. */
-    fetch?: typeof fetch;
+    /** The Mesub API as the holder of a token the auth seam let through. */
+    mesubFor: (token: string) => MesubClient;
+    /** Tests only: the tools to register instead of the server's own. */
+    tools?: readonly AnyTool[];
 }
 
 /**
@@ -35,16 +35,12 @@ export interface McpHandlerDependencies {
  * any instance can answer any request of one client. Clients of the 2025
  * protocol revisions are served the same way, their `initialize` included;
  * no session id is ever issued, and GET and DELETE answer 405.
+ *
+ * It verifies no token: the auth seam (src/auth.ts) does, in front of it, and
+ * hands over who is calling.
  */
 export function createMesubMcpHandler(dependencies: McpHandlerDependencies): McpHttpHandler {
-    const { config, logger } = dependencies;
-
-    const mesubFor = (token: string) =>
-        new MesubClient({
-            baseUrl: config.mesubApiUrl,
-            token,
-            ...(dependencies.fetch && { fetch: dependencies.fetch }),
-        });
+    const { logger, mesubFor, tools } = dependencies;
 
     return createMcpHandler(
         () => {
@@ -52,7 +48,7 @@ export function createMesubMcpHandler(dependencies: McpHandlerDependencies): Mcp
                 { name: SERVER_NAME, title: 'Mesub', version: VERSION },
                 { instructions: INSTRUCTIONS },
             );
-            registerTools(server, { logger, mesubFor });
+            registerTools(server, { logger, mesubFor }, tools);
             return server;
         },
         {

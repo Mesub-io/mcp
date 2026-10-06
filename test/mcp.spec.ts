@@ -8,6 +8,7 @@ import {
     deadUrl,
     fakeMesubApi,
     MODERN,
+    SERVICE_SECRET,
     startServer,
     TOKEN,
     type FakeApi,
@@ -72,7 +73,7 @@ describe.each([
         expect(tools[0]?.description?.length).toBeGreaterThan(40);
     });
 
-    it('calls ping through to the Mesub API, with the caller token', async () => {
+    it('calls ping through to the public /health of the Mesub API, with no credential', async () => {
         const result = await client.callTool({ name: 'ping', arguments: {} });
 
         expect(result.isError).toBeFalsy();
@@ -81,9 +82,19 @@ describe.each([
             'The Mesub API answered with status "ok".\n{"status":"ok","uptime_seconds":42}',
         );
 
-        expect(api.calls).toHaveLength(1);
-        expect(api.calls[0]).toMatchObject({ method: 'GET', path: '/health' });
-        expect(api.calls[0]?.headers.authorization).toBe(`Bearer ${TOKEN}`);
+        const health = api.callsTo('/health');
+        expect(health).toHaveLength(1);
+        expect(health[0]?.method).toBe('GET');
+        expect(health[0]?.headers.authorization).toBeUndefined();
+        expect(health[0]?.headers['x-mesub-service-secret']).toBeUndefined();
+        // Every other call was a check of the token, with both credentials.
+        const others = api.calls.filter((call) => call.path !== '/health');
+        expect(others.length).toBeGreaterThan(0);
+        for (const call of others) {
+            expect(call.path).toBe('/agent/whoami');
+            expect(call.headers.authorization).toBe(`Bearer ${TOKEN}`);
+            expect(call.headers['x-mesub-service-secret']).toBe(SERVICE_SECRET);
+        }
     });
 
     it('returns a Mesub error as a tool error carrying its code and message', async () => {
@@ -129,14 +140,14 @@ describe.each([
 
         expect(result.isError).toBe(true);
         expect(text(result)).toMatch(/project/);
-        expect(api.calls).toHaveLength(0);
+        expect(api.callsTo('/health')).toHaveLength(0);
     });
 
     it('refuses a tool it does not have with a protocol error', async () => {
         await expect(client.callTool({ name: 'drop_everything', arguments: {} })).rejects.toThrow(
             /drop_everything/,
         );
-        expect(api.calls).toHaveLength(0);
+        expect(api.callsTo('/health')).toHaveLength(0);
     });
 
     it('leaks nothing of the call in a response or a log line', async () => {
@@ -148,6 +159,8 @@ describe.each([
         expect(result.isError).toBe(true);
         expect(text(result)).toBe('Mesub error internal_error: Mesub answered with HTTP 500.');
         expect(answered).not.toContain(TOKEN);
+        expect(answered).not.toContain(SERVICE_SECRET);
+        expect(server.lines.join('\n')).not.toContain(SERVICE_SECRET);
         expect(answered).not.toMatch(/\bat \S+ \(|main\.ts|authorization/i);
         expect(server.lines.join('\n')).not.toContain(TOKEN);
         expect(server.logs).toContainEqual(
@@ -156,10 +169,16 @@ describe.each([
     });
 });
 
-describe('the MCP endpoint, when the Mesub API is unreachable', () => {
+describe('the MCP endpoint, when the Mesub API stops answering after the token was checked', () => {
     it('returns a tool error, without the address it tried', async () => {
+        const api = await fakeMesubApi();
+        // The check goes to the API, the tool's own call to an address nothing listens on.
         const dead = await deadUrl();
-        const server = await startServer({ MESUB_API_URL: dead });
+        const split: typeof fetch = (input, init) => {
+            const url = new URL(input instanceof Request ? input.url : input);
+            return fetch(url.pathname === '/health' ? `${dead}/health` : url, init);
+        };
+        const server = await startServer({ MESUB_API_URL: api.url }, { fetch: split });
         const client = await connect(server.url, { modern: true });
 
         const result = await client.callTool({ name: 'ping', arguments: {} });
@@ -177,5 +196,19 @@ describe('the MCP endpoint, when the Mesub API is unreachable', () => {
 
         await client.close();
         await server.stop();
+        await api.close();
+    });
+});
+
+describe('the MCP endpoint, for a client whose token is refused', () => {
+    it('fails to connect: nothing is served, not even the handshake', async () => {
+        const api = await fakeMesubApi();
+        const server = await startServer({ MESUB_API_URL: api.url });
+
+        await expect(connect(server.url, { token: 'mat_made-up' })).rejects.toThrow();
+        await expect(connect(server.url, { token: 'mat_made-up', modern: true })).rejects.toThrow();
+
+        await server.stop();
+        await api.close();
     });
 });

@@ -3,12 +3,24 @@ import type { AddressInfo } from 'node:net';
 
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 
+import type { AppDependencies } from '../src/app.js';
 import { loadConfig, type Config } from '../src/config.js';
 import { createLogger, type Logger } from '../src/logger.js';
 import { start, type RunningServer } from '../src/start.js';
 
-/** A token no test may ever find in a log line or a response. */
-export const TOKEN = 'test-access-token.abc123';
+/** An agent's access token no test may ever find in a log line or a response. */
+export const TOKEN = 'mat_test-access-token-abc123_XYZ';
+
+/** The service secret no test may ever find in a log line or a response. */
+export const SERVICE_SECRET = 'test-service-secret-0123456789-abcdefghij';
+
+/** Where the test servers say clients reach them, and the resource a token is issued for. */
+export const PUBLIC_URL = 'http://localhost:3334';
+export const RESOURCE = `${PUBLIC_URL}/mcp`;
+export const METADATA_URL = `${PUBLIC_URL}/.well-known/oauth-protected-resource/mcp`;
+
+/** The one challenge every 401 carries. */
+export const CHALLENGE = `Bearer error="invalid_token", error_description="A valid Mesub access token is required.", resource_metadata="${METADATA_URL}"`;
 
 /** The protocol revision without sessions nor handshake. */
 export const MODERN = '2026-07-28';
@@ -19,50 +31,150 @@ export interface FakeApiCall {
     headers: IncomingHttpHeaders;
 }
 
+export interface FakeConnection {
+    connection_id: string;
+    project: { id: string; name: string };
+    client: { id: string; name: string };
+    scope: string;
+    audience: string;
+    issuer: string;
+    expires_at: number;
+}
+
+interface Answer {
+    status: number;
+    body: unknown;
+    headers: Record<string, string>;
+}
+
 export interface FakeApi {
     url: string;
+    /** Every call received, `/agent/whoami` included. */
     calls: FakeApiCall[];
-    /** What every next call is answered with. */
+    callsTo: (path: string) => FakeApiCall[];
+    /** What every next call to a route other than `/agent/whoami` is answered with. */
     answer: (status: number, body: unknown, headers?: Record<string, string>) => void;
-    /** Keeps every next call waiting until the function it returns is called. */
+    /** Issues a token: a live connection `/agent/whoami` vouches for. */
+    issue: (token: string, overrides?: Partial<FakeConnection>) => FakeConnection;
+    /** Revokes a token's connection, as a merchant does from the dashboard. */
+    revoke: (token: string) => void;
+    /** Answers every next `/agent/whoami` with this, whatever it carries. Undefined: back to normal. */
+    whoami: (answer?: { status: number; body: unknown; headers?: Record<string, string> }) => void;
+    /** Changes the service secret the API expects. */
+    expectSecret: (secret: string) => void;
+    /** Keeps every next call to a route other than `/agent/whoami` waiting. */
     hold: () => () => void;
+    /** Keeps every next `/agent/whoami` waiting. */
+    holdWhoami: () => () => void;
     close: () => Promise<void>;
 }
 
-/** A local HTTP server standing for the Mesub API. Answers a healthy `GET /health` at first. */
+const refusal = (code: string, message: string) => ({
+    statusCode: 401,
+    message,
+    error: 'Unauthorized',
+    code,
+    retryable: false,
+});
+
+/**
+ * A local HTTP server standing for the Mesub API. `GET /agent/whoami` behaves
+ * as the real one: the service secret first, then the token. Everything else
+ * answers a healthy `GET /health` until told otherwise. `TOKEN` is issued.
+ */
 export async function fakeMesubApi(): Promise<FakeApi> {
     const calls: FakeApiCall[] = [];
-    let next = {
-        status: 200,
-        body: { status: 'ok', uptime: 42 } as unknown,
-        headers: {} as Record<string, string>,
+    const connections = new Map<string, FakeConnection>();
+    let secret = SERVICE_SECRET;
+    let next: Answer = { status: 200, body: { status: 'ok', uptime: 42 }, headers: {} };
+    let forced: Answer | undefined;
+    let gate: Promise<void> = Promise.resolve();
+    let whoamiGate: Promise<void> = Promise.resolve();
+
+    const whoami = (headers: IncomingHttpHeaders): Answer => {
+        if (forced) return forced;
+        if (headers['x-mesub-service-secret'] !== secret) {
+            return {
+                status: 401,
+                body: refusal(
+                    'invalid_service_credentials',
+                    'This route is for the Mesub MCP server.',
+                ),
+                headers: {},
+            };
+        }
+        const token = /^Bearer (.+)$/.exec(headers.authorization ?? '')?.[1];
+        const connection = token === undefined ? undefined : connections.get(token);
+        if (!connection || connection.expires_at <= Date.now() / 1000) {
+            return {
+                status: 401,
+                body: refusal('invalid_agent_token', 'That access token is not valid.'),
+                headers: {},
+            };
+        }
+        return { status: 200, body: connection, headers: { 'Cache-Control': 'no-store' } };
     };
 
-    let gate: Promise<void> = Promise.resolve();
-
     const server = createServer(async (req, res) => {
-        calls.push({ method: req.method ?? '', path: req.url ?? '', headers: req.headers });
-        await gate;
-        res.writeHead(next.status, { 'Content-Type': 'application/json', ...next.headers });
-        res.end(typeof next.body === 'string' ? next.body : JSON.stringify(next.body));
+        const path = req.url ?? '';
+        calls.push({ method: req.method ?? '', path, headers: req.headers });
+        const isWhoami = path === '/agent/whoami';
+        await (isWhoami ? whoamiGate : gate);
+        const { status, body, headers } = isWhoami ? whoami(req.headers) : next;
+        res.writeHead(status, { 'Content-Type': 'application/json', ...headers });
+        res.end(typeof body === 'string' ? body : JSON.stringify(body));
     });
     await listen(server);
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
-    return {
-        url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    const holder = (set: (promise: Promise<void>) => void) => () => {
+        let release = () => {};
+        set(
+            new Promise((resolve) => {
+                release = resolve;
+            }),
+        );
+        return release;
+    };
+
+    const api: FakeApi = {
+        url,
         calls,
+        callsTo: (path) => calls.filter((call) => call.path === path),
         answer: (status, body, headers = {}) => {
             next = { status, body, headers };
         },
-        hold: () => {
-            let release = () => {};
-            gate = new Promise((resolve) => {
-                release = resolve;
-            });
-            return release;
+        issue: (token, overrides = {}) => {
+            const connection: FakeConnection = {
+                connection_id: `conn_${connections.size + 1}`,
+                project: { id: 'proj_1', name: 'Fraise' },
+                client: { id: 'mcp_client_1', name: 'Test agent' },
+                scope: 'mesub',
+                audience: RESOURCE,
+                issuer: url,
+                expires_at: Math.floor(Date.now() / 1000) + 3600,
+                ...overrides,
+            };
+            connections.set(token, connection);
+            return connection;
         },
+        revoke: (token) => void connections.delete(token),
+        whoami: (answer) => {
+            forced = answer && { headers: {}, ...answer };
+        },
+        expectSecret: (value) => {
+            secret = value;
+        },
+        hold: holder((promise) => {
+            gate = promise;
+        }),
+        holdWhoami: holder((promise) => {
+            whoamiGate = promise;
+        }),
         close: () => close(server),
     };
+    api.issue(TOKEN);
+    return api;
 }
 
 /** A URL of this machine nothing listens on. */
@@ -83,11 +195,29 @@ export interface TestServer extends RunningServer {
     lines: string[];
 }
 
-/** The real server on a free port, logging into memory. */
-export async function startServer(env: Record<string, string> = {}): Promise<TestServer> {
-    const config = loadConfig({ PORT: '0', LOG_LEVEL: 'debug', ...env });
+export type TestOverrides = Omit<AppDependencies, 'config' | 'logger'>;
+
+/**
+ * The real server on a free port, logging into memory. Never the real Mesub
+ * API: without `MESUB_API_URL` it points at an address nothing listens on.
+ * The issuer is the API's own URL unless told otherwise, as the fake answers.
+ */
+export async function startServer(
+    env: Record<string, string> = {},
+    overrides: TestOverrides = {},
+): Promise<TestServer> {
+    const apiUrl = env.MESUB_API_URL ?? (await deadUrl());
+    const config = loadConfig({
+        PORT: '0',
+        LOG_LEVEL: 'debug',
+        MCP_PUBLIC_URL: PUBLIC_URL,
+        MESUB_SERVICE_SECRET: SERVICE_SECRET,
+        MESUB_ISSUER_URL: apiUrl,
+        ...env,
+        MESUB_API_URL: apiUrl,
+    });
     const { logger, logs, lines } = memoryLogger();
-    const running = await start({ config, logger });
+    const running = await start({ config, logger, ...overrides });
     return { ...running, url: `http://127.0.0.1:${running.port}`, config, logs, lines };
 }
 
@@ -146,6 +276,22 @@ export function post(
     });
 }
 
+export const bearer = (token: string = TOKEN) => ({ Authorization: `Bearer ${token}` });
+
+/** A raw `tools/call`, with no handshake before it. */
+export function callTool(
+    url: string,
+    name: string,
+    args: Record<string, unknown> = {},
+    headers: Record<string, string> = bearer(),
+): Promise<Response> {
+    return post(
+        url,
+        { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
+        { 'MCP-Protocol-Version': '2025-06-18', ...headers },
+    );
+}
+
 /** The JSON-RPC message of a response, sent as JSON or as one SSE event. */
 export async function readJsonRpc(response: Response): Promise<unknown> {
     const text = await response.text();
@@ -176,5 +322,8 @@ function listen(server: Server): Promise<void> {
 }
 
 function close(server: Server): Promise<void> {
-    return new Promise((resolve) => server.close(() => resolve()));
+    return new Promise((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+    });
 }

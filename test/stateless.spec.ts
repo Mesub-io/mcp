@@ -1,6 +1,8 @@
 import type { Client } from '@modelcontextprotocol/client';
 
 import {
+    bearer,
+    callTool,
     connect,
     fakeMesubApi,
     INITIALIZE,
@@ -87,25 +89,35 @@ describe('statelessness', () => {
     });
 
     it('keeps nothing of one caller for the next', async () => {
-        const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
-        const headers = (token: string) => ({
-            ...bearer(token),
-            'MCP-Protocol-Version': '2025-06-18',
-        });
-        const call = {
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'tools/call',
-            params: { name: 'ping', arguments: {} },
-        };
+        api.issue('mat_token-of-alice', { connection_id: 'conn_alice' });
+        api.issue('mat_token-of-bob', { connection_id: 'conn_bob' });
 
-        await readJsonRpc(await post(first.url, INITIALIZE, bearer('token-of-alice')));
-        await readJsonRpc(await post(first.url, call, headers('token-of-alice')));
-        await readJsonRpc(await post(first.url, call, headers('token-of-bob')));
+        await readJsonRpc(await post(first.url, INITIALIZE, bearer('mat_token-of-alice')));
+        await readJsonRpc(await callTool(first.url, 'ping', {}, bearer('mat_token-of-alice')));
+        await readJsonRpc(await callTool(first.url, 'ping', {}, bearer('mat_token-of-bob')));
 
-        expect(api.calls.map((made) => made.headers.authorization)).toEqual([
-            'Bearer token-of-alice',
-            'Bearer token-of-bob',
+        expect(api.callsTo('/agent/whoami').map((made) => made.headers.authorization)).toEqual([
+            'Bearer mat_token-of-alice',
+            'Bearer mat_token-of-alice',
+            'Bearer mat_token-of-bob',
         ]);
+    });
+
+    it('takes a revoke into account on every instance at once', async () => {
+        expect((await callTool(first.url, 'ping')).status).toBe(200);
+        expect((await callTool(second.url, 'ping')).status).toBe(200);
+
+        api.revoke(TOKEN);
+
+        expect((await callTool(second.url, 'ping')).status).toBe(401);
+        expect((await callTool(first.url, 'ping')).status).toBe(401);
+    });
+
+    it('lets a token one instance refused be taken by the other once it is good', async () => {
+        // What an instance remembers is its own, and only ever a refusal.
+        expect((await callTool(first.url, 'ping', {}, bearer('mat_late'))).status).toBe(401);
+        api.issue('mat_late');
+
+        expect((await callTool(second.url, 'ping', {}, bearer('mat_late'))).status).toBe(200);
     });
 });

@@ -1,13 +1,27 @@
 import { MAX_REQUEST_BODY_BYTES } from '../src/server.js';
 import { SERVER_NAME, VERSION } from '../src/version.js';
-import { INITIALIZE, post, readJsonRpc, startServer, TOKEN, type TestServer } from './helpers.js';
+import {
+    fakeMesubApi,
+    INITIALIZE,
+    post,
+    readJsonRpc,
+    startServer,
+    TOKEN,
+    type FakeApi,
+    type TestServer,
+} from './helpers.js';
 
 describe('the HTTP surface', () => {
+    let api: FakeApi;
     let server: TestServer;
     beforeAll(async () => {
-        server = await startServer();
+        api = await fakeMesubApi();
+        server = await startServer({ MESUB_API_URL: api.url });
     });
-    afterAll(() => server.stop());
+    afterAll(async () => {
+        await server.stop();
+        await api.close();
+    });
 
     const bearer = { Authorization: `Bearer ${TOKEN}` };
 
@@ -30,51 +44,14 @@ describe('the HTTP surface', () => {
         expect(await response.json()).toEqual({ error: 'not_found' });
     });
 
-    describe('the auth seam, as it stands before #2', () => {
-        it.each([
-            ['no Authorization header', {}],
-            ['an empty bearer', { Authorization: 'Bearer ' }],
-            ['another scheme', { Authorization: 'Basic dXNlcjpwYXNz' }],
-            ['a token that is not one', { Authorization: 'Bearer a b' }],
-        ])('refuses %s with 401 and a JSON-RPC error', async (_case, headers) => {
-            const response = await post(server.url, INITIALIZE, headers);
+    it('answers a request holding a valid token', async () => {
+        const response = await post(server.url, INITIALIZE, bearer);
 
-            expect(response.status).toBe(401);
-            expect(response.headers.get('www-authenticate')).toBe('Bearer');
-            expect(await response.json()).toEqual({
-                jsonrpc: '2.0',
-                error: { code: -32000, message: expect.stringContaining('bearer token') },
-                id: null,
-            });
-        });
-
-        it('does not read a token from the URL', async () => {
-            const response = await fetch(`${server.url}/mcp?access_token=${TOKEN}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(INITIALIZE),
-            });
-            expect(response.status).toBe(401);
-        });
-
-        it('lets any bearer token through, unverified', async () => {
-            const response = await post(server.url, INITIALIZE, {
-                Authorization: 'Bearer anything-at-all',
-            });
-
-            expect(response.status).toBe(200);
-            expect(await readJsonRpc(response)).toMatchObject({
-                jsonrpc: '2.0',
-                id: 1,
-                result: { serverInfo: { name: SERVER_NAME, version: VERSION } },
-            });
-        });
-
-        it('takes the scheme in any casing', async () => {
-            const response = await post(server.url, INITIALIZE, {
-                Authorization: `bearer ${TOKEN}`,
-            });
-            expect(response.status).toBe(200);
+        expect(response.status).toBe(200);
+        expect(await readJsonRpc(response)).toMatchObject({
+            jsonrpc: '2.0',
+            id: 1,
+            result: { serverInfo: { name: SERVER_NAME, version: VERSION } },
         });
     });
 
@@ -86,8 +63,10 @@ describe('the HTTP surface', () => {
         it.each(['https://evil.example.com', 'null', 'not an origin'])(
             'refuses %s with 403, before looking at the token',
             async (origin) => {
+                const before = api.calls.length;
                 const response = await post(server.url, INITIALIZE, { ...bearer, Origin: origin });
 
+                expect(api.calls).toHaveLength(before);
                 expect(response.status).toBe(403);
                 expect(await response.json()).toMatchObject({ jsonrpc: '2.0', id: null });
                 expect(response.headers.get('access-control-allow-origin')).toBeNull();
@@ -151,12 +130,17 @@ describe('the HTTP surface', () => {
     describe('hosted, behind a public URL', () => {
         let hosted: TestServer;
         beforeAll(async () => {
+            api.issue(TOKEN, { audience: 'https://mcp.example.com/mcp' });
             hosted = await startServer({
+                MESUB_API_URL: api.url,
                 MCP_PUBLIC_URL: 'https://mcp.example.com',
                 MCP_ALLOWED_ORIGINS: 'app.example.com',
             });
         });
-        afterAll(() => hosted.stop());
+        afterAll(async () => {
+            await hosted.stop();
+            api.issue(TOKEN);
+        });
 
         it.each(['https://mcp.example.com', 'https://app.example.com'])(
             'lets %s through',
@@ -194,6 +178,14 @@ describe('the HTTP surface', () => {
     });
 
     describe('the request body', () => {
+        it('is not read before the token is checked', async () => {
+            const body = JSON.stringify({
+                ...INITIALIZE,
+                padding: 'x'.repeat(MAX_REQUEST_BODY_BYTES),
+            });
+            expect((await post(server.url, body)).status).toBe(401);
+        });
+
         it('refuses one past the limit with 413', async () => {
             const body = JSON.stringify({
                 ...INITIALIZE,
