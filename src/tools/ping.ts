@@ -14,7 +14,7 @@ export const ping = defineTool({
         'Check that the Mesub API is reachable and answering. Use it first when another ' +
         'Mesub tool fails, to tell an outage from a mistake in a request. Returns the ' +
         "API's status and how long it has been running. Reads nothing from the project " +
-        'and changes nothing.',
+        '(`get_project` does) and changes nothing.',
     inputSchema: z.strictObject({}),
     outputSchema: z.object({
         status: z.string().describe('"ok" when the API is up and answering.'),

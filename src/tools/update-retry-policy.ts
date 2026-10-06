@@ -23,7 +23,8 @@ export const updateRetryPolicy = defineTool({
         'period of the plan, and on a tier that does not retry (clearing is always ' +
         'allowed). Nothing is signed and nothing goes on chain. It changes nothing else of ' +
         'the plan: not its price, its end date, its receiver nor its state. To charge one ' +
-        'late subscriber now use `retry_charge`. Returns the plan.',
+        'late subscriber now use `retry_charge`; for a new plan, `prepare_plan`. Returns ' +
+        'the plan.',
     inputSchema: z
         .strictObject({
             plan_id: idInput('The id of the plan, as `list_plans` returns it.'),

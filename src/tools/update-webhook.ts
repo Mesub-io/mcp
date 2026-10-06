@@ -18,7 +18,7 @@ export const updateWebhook = defineTool({
         'integration from hearing of it, and disabling mails the account owner. Send only ' +
         'what changes; the signing secret is kept. An endpoint Mesub turned off after ' +
         'failures comes back only with `enabled: true`. To remove an endpoint use ' +
-        '`delete_webhook`. Returns the endpoint.',
+        '`delete_webhook`; to add another, `create_webhook`. Returns the endpoint.',
     inputSchema: z
         .strictObject({
             webhook_id: webhookId,

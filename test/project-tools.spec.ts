@@ -323,6 +323,12 @@ describe.each([
                 HOOK_URL,
                 'hooks.example',
                 'Fraise & Co',
+                // What prepare_plan was given, and what it was answered.
+                'fraise.example',
+                'Everything.',
+                '9990000',
+                'dashboard#plans',
+                'Helper',
                 'subscription.created',
                 '7xKX',
                 TOKEN,
