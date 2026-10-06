@@ -287,18 +287,64 @@ describe('authorization', () => {
         });
 
         it.each([
-            ['the audience of another MCP server', { audience: 'https://other.example.com/mcp' }],
-            ['the audience without its path', { audience: PUBLIC_URL }],
-            ['an audience with a trailing slash', { audience: `${RESOURCE}/` }],
-        ])('refuses a live token with %s, even on a 200', async (_case, overrides) => {
-            api.issue('mat_elsewhere', overrides);
+            ['the audience of another MCP server', 'https://other.example.com/mcp'],
+            ['the audience without its path', PUBLIC_URL],
+            ['an audience with a trailing slash', `${RESOURCE}/`],
+        ])(
+            'M4: refuses a live token with %s with 503, as a fault of ours',
+            async (_case, audience) => {
+                api.issue('mat_elsewhere', { audience });
 
-            const response = await callTool(server.url, 'ping', {}, bearer('mat_elsewhere'));
+                const response = await callTool(server.url, 'ping', {}, bearer('mat_elsewhere'));
 
-            expect(response.status).toBe(401);
-            expect(response.headers.get('www-authenticate')).toBe(CHALLENGE);
-            expect(reasons(server, 'request refused')).toEqual(['audience_mismatch']);
-            expect(api.callsTo('/health')).toHaveLength(0);
+                // Not a 401: the client would sign in again, and again, for nothing.
+                expect(response.status).toBe(503);
+                expect(response.headers.get('www-authenticate')).toBeNull();
+                expect(Number(response.headers.get('retry-after'))).toBeGreaterThan(0);
+                expect(api.callsTo('/health')).toHaveLength(0);
+                expect(server.logs).toContainEqual(
+                    expect.objectContaining({
+                        level: 'error',
+                        message: 'cannot check access tokens',
+                        reason: 'audience_mismatch',
+                        expected: RESOURCE,
+                        received: audience,
+                    }),
+                );
+            },
+        );
+
+        it('M4: does not remember a token against a mismatch that was ours', async () => {
+            api.issue('mat_soon', { audience: 'https://other.example.com/mcp' });
+            expect((await callTool(server.url, 'ping', {}, bearer('mat_soon'))).status).toBe(503);
+
+            // The operator fixes the setting: the very same token is good at once.
+            api.issue('mat_soon');
+            expect((await callTool(server.url, 'ping', {}, bearer('mat_soon'))).status).toBe(200);
+        });
+
+        it('L3: never writes what the API answered as it came', async () => {
+            const hostile = `https://x.example.com/${TOKEN}\n{"level":"error"}\u0007${'a'.repeat(400)}`;
+            api.issue('mat_a', { audience: hostile });
+            api.issue('mat_b', { issuer: 'not a url at all, and "quoted"' });
+            api.issue('mat_c', { issuer: `javascript:alert(1)//${SERVICE_SECRET}` });
+
+            for (const token of ['mat_a', 'mat_b', 'mat_c']) {
+                expect((await callTool(server.url, 'ping', {}, bearer(token))).status).toBe(503);
+            }
+
+            const received = server.logs
+                .filter((line) => line.message === 'cannot check access tokens')
+                .map((line) => String(line.received));
+            expect(received).toHaveLength(3);
+            expect(received[0]).toMatch(/^https:\/\/x\.example\.com\/\S{0,200}$/);
+            expect(received[0]?.length).toBeLessThanOrEqual(220);
+            expect(received[1]).toBe('[not a URL, 30 characters]');
+            expect(received[2]).toMatch(/^\[not a URL, \d+ characters\]$/);
+            const lines = server.lines.join('\n');
+            expect(lines).not.toContain(TOKEN);
+            expect(lines).not.toContain(SERVICE_SECRET);
+            expect(lines).not.toContain('quoted');
         });
 
         it('refuses a 200 from an API that is not the issuer it names, with 503', async () => {
@@ -309,6 +355,13 @@ describe('authorization', () => {
             expect(response.status).toBe(503);
             expect(response.headers.get('www-authenticate')).toBeNull();
             expect(reasons(server, 'cannot check access tokens')).toEqual(['issuer_mismatch']);
+            expect(server.logs).toContainEqual(
+                expect.objectContaining({
+                    level: 'error',
+                    expected: api.url,
+                    received: 'https://rogue.example.com',
+                }),
+            );
             expect(api.callsTo('/health')).toHaveLength(0);
         });
 
@@ -408,6 +461,98 @@ describe('authorization', () => {
             await slow.stop();
         });
 
+        it('M1: gives up on an API that sends its headers and then stalls', async () => {
+            const slow = await startServer({ MESUB_API_URL: api.url }, { verifyTimeoutMs: 100 });
+            api.intercept((req, res) => {
+                if (req.url !== WHOAMI) return false;
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.write('{"connection_id":');
+                return true;
+            });
+
+            const started = Date.now();
+            const response = await callTool(slow.url, 'ping');
+
+            expect(response.status).toBe(503);
+            expect(Date.now() - started).toBeLessThan(1500);
+            expect(reasons(slow, 'cannot check access tokens')).toEqual(['api_unavailable']);
+            // The call to the API is let go of, not left to hang.
+            await vi.waitFor(() => expect(api.pending()).toBe(0));
+            await slow.stop();
+        });
+
+        it('M1: gives up on an API that drips its answer a byte at a time', async () => {
+            const slow = await startServer({ MESUB_API_URL: api.url }, { verifyTimeoutMs: 150 });
+            api.intercept((req, res) => {
+                if (req.url !== WHOAMI) return false;
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                const drip = setInterval(() => res.write(' '), 20);
+                res.on('close', () => clearInterval(drip));
+                return true;
+            });
+
+            const started = Date.now();
+            const responses = await Promise.all(
+                Array.from({ length: 5 }, () => callTool(slow.url, 'ping')),
+            );
+
+            expect(responses.map((response) => response.status)).toEqual(Array(5).fill(503));
+            expect(Date.now() - started).toBeLessThan(1500);
+            await vi.waitFor(() => expect(api.pending()).toBe(0));
+
+            // Healthy again: the same token is let in, nothing was held against it.
+            api.intercept();
+            expect((await callTool(slow.url, 'ping')).status).toBe(200);
+            await slow.stop();
+        });
+
+        it('M1: gives up the same way on a tool call that stalls after its headers', async () => {
+            const slow = await startServer({ MESUB_API_URL: api.url }, { apiTimeoutMs: 100 });
+            api.intercept((req, res) => {
+                if (req.url !== '/health') return false;
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                const drip = setInterval(() => res.write(' '), 20);
+                res.on('close', () => clearInterval(drip));
+                return true;
+            });
+
+            const started = Date.now();
+            const response = await callTool(slow.url, 'ping');
+
+            expect(response.status).toBe(200);
+            expect(await readJsonRpc(response)).toMatchObject({
+                result: {
+                    isError: true,
+                    content: [
+                        { text: 'Mesub error unavailable: Mesub did not answer within 100 ms.' },
+                    ],
+                },
+            });
+            expect(Date.now() - started).toBeLessThan(1500);
+            await vi.waitFor(() => expect(api.pending()).toBe(0));
+            await slow.stop();
+        });
+
+        it('L4: does not blame the API for a caller that hung up during the check', async () => {
+            api.delayWhoami(300);
+            for (let i = 0; i < 3; i++) {
+                const leaving = new AbortController();
+                const call = fetch(`${server.url}/mcp`, {
+                    method: 'POST',
+                    headers: { ...bearer(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify(INITIALIZE),
+                    signal: leaving.signal,
+                });
+                setTimeout(() => leaving.abort(), 50);
+                await expect(call).rejects.toThrow();
+            }
+            await new Promise((resolve) => setTimeout(resolve, 400));
+
+            expect(reasons(server, 'cannot check access tokens')).toEqual([]);
+            expect(server.logs.filter((line) => line.level === 'error')).toEqual([]);
+            expect(server.logs.filter((line) => line.message === 'caller left')).toHaveLength(3);
+        });
+
         it.each([
             [503, { 'Retry-After': '7' }, 503, '7'],
             [503, {}, 503, '5'],
@@ -416,8 +561,10 @@ describe('authorization', () => {
             [502, {}, 503, '5'],
             [404, {}, 503, '5'],
             [403, {}, 503, '5'],
-            [429, { 'Retry-After': '12' }, 429, '12'],
-            [429, {}, 429, '10'],
+            // H2: the API short of room for a check is our capacity problem, not the caller's.
+            [429, { 'Retry-After': '12' }, 503, '12'],
+            [429, { 'Retry-After': '900' }, 503, '60'],
+            [429, {}, 503, '5'],
         ])(
             'answers an API %i (%o) with %i and Retry-After %s',
             async (status, headers, expected, retryAfter) => {
@@ -510,6 +657,82 @@ describe('authorization', () => {
         });
     });
 
+    describe('L1: the trace a token leaves', () => {
+        it('writes one info line per request let in and per tool call, without a credential', async () => {
+            api.issue('mat_traced', {
+                connection_id: 'conn_traced',
+                project: { id: 'proj_9', name: 'Fraise' },
+                client: { id: 'mcp_x', name: 'An agent' },
+            });
+            const quiet = await startServer({ MESUB_API_URL: api.url, LOG_LEVEL: 'info' });
+
+            const traced = bearer('mat_traced');
+            await (
+                await callTool(quiet.url, 'search_docs', { query: 'a-query-nobody-logs' }, traced)
+            ).text();
+            api.answer(503, { statusCode: 503, code: 'unavailable', message: 'no' });
+            await (await callTool(quiet.url, 'ping', {}, traced)).text();
+            await (
+                await post(quiet.url, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, traced)
+            ).text();
+
+            const info = quiet.logs.filter((line) => line.level === 'info');
+            expect(info.filter((line) => line.message === 'request let in')).toHaveLength(3);
+            expect(info).toContainEqual(
+                expect.objectContaining({
+                    message: 'request let in',
+                    connectionId: 'conn_traced',
+                    projectId: 'proj_9',
+                    address: '127.0.0.1',
+                }),
+            );
+            const calls = info.filter((line) => line.message === 'tool call');
+            expect(calls).toEqual([
+                expect.objectContaining({
+                    tool: 'search_docs',
+                    outcome: 'ok',
+                    connectionId: 'conn_traced',
+                    projectId: 'proj_9',
+                    clientName: 'An agent',
+                    address: '127.0.0.1',
+                    durationMs: expect.any(Number),
+                }),
+                expect.objectContaining({ tool: 'ping', outcome: 'unavailable' }),
+            ]);
+            for (const line of calls) {
+                expect(Object.keys(line).sort()).toEqual([
+                    'address',
+                    'clientName',
+                    'connectionId',
+                    'durationMs',
+                    'level',
+                    'message',
+                    'outcome',
+                    'projectId',
+                    'time',
+                    'tool',
+                ]);
+            }
+            const lines = quiet.lines.join('\n');
+            expect(lines).not.toContain('mat_traced');
+            expect(lines).not.toContain('a-query-nobody-logs');
+            expect(lines).not.toContain('docs.mesub.io');
+            await quiet.stop();
+        });
+
+        it('cuts a client name short and takes its line breaks out', async () => {
+            api.issue('mat_named', {
+                client: { id: 'c', name: `Agent\n{"level":"error"}\u0000${'x'.repeat(400)}` },
+            });
+            await (await callTool(server.url, 'ping', {}, bearer('mat_named'))).text();
+
+            const call = server.logs.find((line) => line.message === 'tool call');
+            expect(String(call?.clientName)).toHaveLength(100);
+            expect(String(call?.clientName).includes('\n')).toBe(false);
+            expect(String(call?.clientName).includes('\u0000')).toBe(false);
+        });
+    });
+
     describe('the refused tokens it remembers', () => {
         let now: number;
         let timed: TestServer;
@@ -532,6 +755,12 @@ describe('authorization', () => {
                 'refused_token',
                 ...Array<string>(4).fill('refused_token_cached'),
             ]);
+        });
+
+        it('L9: keeps a refusal a few seconds only', () => {
+            // Long enough for a client's immediate retries, short enough for a
+            // token the API refused during a lag of its own.
+            expect(REFUSED_TOKEN_TTL_MS).toBe(5000);
         });
 
         it('asks again once its short memory has run out, and not a millisecond before', async () => {

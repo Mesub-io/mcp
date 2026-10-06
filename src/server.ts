@@ -46,13 +46,26 @@ export function createMesubMcpHandler(dependencies: McpHandlerDependencies): Mcp
         () => {
             const server = new McpServer(
                 { name: SERVER_NAME, title: 'Mesub', version: VERSION },
-                { instructions: INSTRUCTIONS },
+                {
+                    instructions: INSTRUCTIONS,
+                    // The list of tools never changes while the server runs,
+                    // and no stream would be there to say it did.
+                    capabilities: { tools: { listChanged: false } },
+                },
             );
             registerTools(server, { logger, mesubFor }, tools);
             return server;
         },
         {
             maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
+            // No `subscriptions/listen` stream is ever opened: each is refused
+            // at once. A stream is opened by one request and lives on, so its
+            // token would be checked once and it would outlive a revoke, and
+            // one caller could hold every stream of the instance. No tool
+            // publishes anything on one today. When one does, this comes back
+            // with a cap per connection and a re-check of the token while a
+            // stream is open.
+            maxSubscriptions: 0,
             onerror: (error) => logger.warn('mcp request rejected', { error }),
         },
     );

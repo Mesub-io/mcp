@@ -1,8 +1,6 @@
 import {
     hostHeaderValidationResponse,
     localhostAllowedHostnames,
-    originValidationResponse,
-    validateOriginHeader,
     type McpHttpHandler,
 } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
@@ -27,6 +25,8 @@ export interface AppDependencies {
     limits?: Partial<Limits>;
     /** Tests only: a shorter wait for the API to vouch for a token. */
     verifyTimeoutMs?: number;
+    /** Tests only: a shorter wait for the API to answer a tool. */
+    apiTimeoutMs?: number;
     /** Tests only: the tools to register instead of the server's own. */
     tools?: readonly AnyTool[];
 }
@@ -43,13 +43,46 @@ export interface App {
     close: () => Promise<void>;
 }
 
-/** Hostnames a browser may call from: the server's own, and those configured. */
-export function allowedOrigins(config: Config): string[] {
-    return [
-        new URL(config.publicUrl).hostname,
-        ...(isLoopback(config.publicUrl) ? localhostAllowedHostnames() : []),
-        ...config.allowedOrigins,
-    ];
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * Whether a browser may call from this origin. An origin is a scheme, a host
+ * AND a port, compared whole: `http://mcp.example.com` is not
+ * `https://mcp.example.com`, nor is `https://mcp.example.com:8443`.
+ *
+ * Allowed: the public URL's own origin and those configured. Run locally,
+ * a page of this machine as well, on any port: that is where a developer's
+ * tools are served from, and a page of another machine is still refused.
+ */
+export function originAllowed(origin: string, config: Config): boolean {
+    // As a browser writes one: what parses back to itself, and nothing else.
+    if (!URL.canParse(origin) || new URL(origin).origin !== origin) return false;
+    if (origin === config.publicUrl || config.allowedOrigins.includes(origin)) return true;
+
+    const { protocol, hostname } = new URL(origin);
+    return (
+        isLoopback(config.publicUrl) &&
+        (protocol === 'http:' || protocol === 'https:') &&
+        LOOPBACK_HOSTS.has(hostname)
+    );
+}
+
+/** An Origin header fit for a log line: as it came when it is one, a label otherwise. */
+function loggableOrigin(origin: string): string {
+    return origin.length <= 200 && URL.canParse(origin) && new URL(origin).origin === origin
+        ? origin
+        : `[not an origin, ${origin.length} characters]`;
+}
+
+/**
+ * 403, readable by the page that was refused: it says no and nothing else,
+ * to anybody, so any origin may read it. A preflight still fails, as it must.
+ */
+function forbidden(message: string): Response {
+    return Response.json(
+        { jsonrpc: '2.0', error: { code: -32000, message }, id: null },
+        { status: 403, headers: { 'Access-Control-Allow-Origin': '*', Vary: 'Origin' } },
+    );
 }
 
 /**
@@ -65,7 +98,6 @@ export function createApp(dependencies: AppDependencies): App {
         mesubFor: auth.mesubFor,
         ...(dependencies.tools && { tools: dependencies.tools }),
     });
-    const origins = allowedOrigins(config);
     const local = isLoopback(config.publicUrl);
 
     const app = new Hono<{ Bindings: NodeBindings }>();
@@ -87,12 +119,18 @@ export function createApp(dependencies: AppDependencies): App {
     // without an Origin passes: only browsers send one. Run locally, the Host
     // header is checked too, which is what a rebound DNS name gives away.
     app.use('/mcp', async (c, next) => {
-        const refused =
-            originValidationResponse(c.req.raw, origins) ??
-            (local
-                ? hostHeaderValidationResponse(c.req.raw, localhostAllowedHostnames())
-                : undefined);
-        return refused ?? next();
+        const origin = c.req.header('origin');
+        const address = () => auth.addressOf(c.req.raw, c.env?.incoming?.socket?.remoteAddress);
+
+        if (origin !== undefined && !originAllowed(origin, config)) {
+            auth.note(address(), 'warn', 'origin refused', { origin: loggableOrigin(origin) });
+            return forbidden('This origin may not call the Mesub MCP server.');
+        }
+        if (local && hostHeaderValidationResponse(c.req.raw, localhostAllowedHostnames())) {
+            auth.note(address(), 'warn', 'host refused', {});
+            return forbidden('This host is not the Mesub MCP server.');
+        }
+        return next();
     });
 
     // An origin let through is a browser: it gets the CORS headers it needs,
@@ -100,7 +138,7 @@ export function createApp(dependencies: AppDependencies): App {
     app.use(
         '/mcp',
         cors({
-            origin: (origin) => (validateOriginHeader(origin, origins).ok ? origin : null),
+            origin: (origin) => (originAllowed(origin, config) ? origin : null),
             allowMethods: ['POST'],
             allowHeaders: [
                 'Authorization',

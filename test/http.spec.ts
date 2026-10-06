@@ -69,7 +69,9 @@ describe('the HTTP surface', () => {
                 expect(api.calls).toHaveLength(before);
                 expect(response.status).toBe(403);
                 expect(await response.json()).toMatchObject({ jsonrpc: '2.0', id: null });
-                expect(response.headers.get('access-control-allow-origin')).toBeNull();
+                // Readable by the page that was refused: it says nothing but "no".
+                expect(response.headers.get('access-control-allow-origin')).toBe('*');
+                expect(response.headers.get('access-control-allow-credentials')).toBeNull();
             },
         );
 
@@ -101,7 +103,59 @@ describe('the HTTP surface', () => {
 
             const refused = await preflight('https://evil.example.com');
             expect(refused.status).toBe(403);
-            expect(refused.headers.get('access-control-allow-origin')).toBeNull();
+            expect(refused.headers.get('access-control-allow-methods')).toBeNull();
+            expect(refused.headers.get('access-control-allow-headers')).toBeNull();
+        });
+
+        it.each(['http://localhost:9999', 'http://127.0.0.1:5173', 'https://localhost:8443'])(
+            'run locally, lets a page of this machine through on any port: %s',
+            async (origin) => {
+                const response = await post(server.url, INITIALIZE, { ...bearer, Origin: origin });
+                expect(response.status).toBe(200);
+            },
+        );
+
+        it.each([
+            'http://localhost.evil.example.com',
+            'http://localhost@evil.example.com',
+            'http://evil.example.com#@localhost',
+            'file://',
+            'chrome-extension://abcdefgh',
+            'http://LOCALHOST:5173',
+            'http://localhost:5173/',
+        ])('run locally, refuses %s', async (origin) => {
+            const response = await post(server.url, INITIALIZE, { ...bearer, Origin: origin });
+            expect(response.status).toBe(403);
+        });
+
+        it('L2: says in its logs that an origin or a host was refused, a few times a minute', async () => {
+            const quiet = await startServer(
+                { MESUB_API_URL: api.url },
+                { limits: { logLinesPerAddress: 3 } },
+            );
+            for (let i = 0; i < 10; i++) {
+                await post(quiet.url, INITIALIZE, { Origin: `https://evil-${i}.example.com` });
+            }
+
+            const refused = quiet.logs.filter((line) => line.message === 'origin refused');
+            expect(refused).toHaveLength(3);
+            expect(refused[0]).toMatchObject({
+                level: 'warn',
+                address: '127.0.0.1',
+                origin: 'https://evil-0.example.com',
+            });
+            await quiet.stop();
+        });
+
+        it('L2: never writes an Origin as it came when it is not one', async () => {
+            await post(server.url, INITIALIZE, {
+                ...bearer,
+                Origin: `not an origin ${TOKEN} ${'x'.repeat(500)}`,
+            });
+
+            const line = server.logs.filter((entry) => entry.message === 'origin refused').at(-1);
+            expect(line?.origin).toMatch(/^\[not an origin, \d+ characters\]$/);
+            expect(server.lines.join('\n')).not.toContain(TOKEN);
         });
 
         it('refuses a Host that is not this machine when run locally', async () => {
@@ -124,6 +178,9 @@ describe('the HTTP surface', () => {
             });
 
             expect(status).toBe(403);
+            expect(server.logs).toContainEqual(
+                expect.objectContaining({ level: 'warn', message: 'host refused' }),
+            );
         });
     });
 
@@ -134,7 +191,7 @@ describe('the HTTP surface', () => {
             hosted = await startServer({
                 MESUB_API_URL: api.url,
                 MCP_PUBLIC_URL: 'https://mcp.example.com',
-                MCP_ALLOWED_ORIGINS: 'app.example.com',
+                MCP_ALLOWED_ORIGINS: 'https://app.example.com, https://admin.example.com:8443',
             });
         });
         afterAll(async () => {
@@ -142,21 +199,47 @@ describe('the HTTP surface', () => {
             api.issue(TOKEN);
         });
 
-        it.each(['https://mcp.example.com', 'https://app.example.com'])(
-            'lets %s through',
-            async (origin) => {
-                const response = await post(hosted.url, INITIALIZE, { ...bearer, Origin: origin });
-                expect(response.status).toBe(200);
-            },
-        );
+        it.each([
+            'https://mcp.example.com',
+            'https://app.example.com',
+            'https://admin.example.com:8443',
+        ])('lets %s through', async (origin) => {
+            const response = await post(hosted.url, INITIALIZE, { ...bearer, Origin: origin });
+            expect(response.status).toBe(200);
+            expect(response.headers.get('access-control-allow-origin')).toBe(origin);
+        });
 
-        it.each(['http://localhost:5173', 'https://evil.example.com'])(
-            'refuses %s',
-            async (origin) => {
-                const response = await post(hosted.url, INITIALIZE, { ...bearer, Origin: origin });
+        it.each([
+            // L2: the scheme and the port are part of an origin.
+            'http://mcp.example.com',
+            'https://mcp.example.com:8443',
+            'http://mcp.example.com:8080',
+            'http://app.example.com',
+            'https://app.example.com:444',
+            'https://admin.example.com',
+            'https://admin.example.com:443',
+            'https://MCP.EXAMPLE.COM',
+            'https://mcp.example.com.evil.example.com',
+            'http://localhost:5173',
+            'http://127.0.0.1',
+            'https://evil.example.com',
+            'null',
+        ])('refuses %s', async (origin) => {
+            const before = api.calls.length;
+            const response = await post(hosted.url, INITIALIZE, { ...bearer, Origin: origin });
+            expect(response.status).toBe(403);
+            expect(api.calls).toHaveLength(before);
+        });
+
+        it('refuses the preflight of a page on another port or scheme', async () => {
+            for (const origin of ['http://mcp.example.com', 'https://app.example.com:444']) {
+                const response = await fetch(`${hosted.url}/mcp`, {
+                    method: 'OPTIONS',
+                    headers: { Origin: origin, 'Access-Control-Request-Method': 'POST' },
+                });
                 expect(response.status).toBe(403);
-            },
-        );
+            }
+        });
     });
 
     describe('what the transport does not keep', () => {

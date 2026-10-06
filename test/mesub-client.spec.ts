@@ -295,18 +295,159 @@ describe('apiUrl', () => {
         expect(() => apiUrl(base, path)).toThrow('Refused to call a path that is not a plain one.');
     });
 
-    it('stays under the base whatever an id says, once it went through pathSegment', () => {
-        for (const id of ['../../admin', 'a/b', 'a?b=c', 'a#b', '%2e%2e', 'é', 'a b', '@evil']) {
+    it.each([
+        '/a/%2f%2fevil',
+        '/a/%2Fx',
+        '/a/%5cevil',
+        '/a/%5Cx',
+        '/a/%00',
+        '/a/%0d%0aX',
+        '/a/%7f',
+        '/a/%252e%252e/b',
+        '/a/.%2e/b',
+        '/a/x%2ey',
+        '/a/',
+        '',
+        '/',
+    ])('L6: refuses %j: an encoded separator is a separator', (path) => {
+        expect(() => apiUrl(base, path)).toThrow('Refused to call a path that is not a plain one.');
+    });
+
+    it('takes what pathSegment made of an id, and stays where it was told', () => {
+        for (const id of [
+            'plan_1',
+            'é',
+            'a b',
+            '@evil.example',
+            'a?b=c',
+            'a#b',
+            'a&b',
+            'a:b',
+            'A.b~c-d',
+        ]) {
             const url = apiUrl(base, `/plans/${pathSegment(id)}`);
             expect(url.origin).toBe('https://api.mesub.io');
             expect(url.pathname.startsWith('/v1/plans/')).toBe(true);
             expect(url.pathname.split('/')).toHaveLength(4);
+            expect(decodeURIComponent(url.pathname.split('/')[3] ?? '')).toBe(id);
             expect(url.search).toBe('');
             expect(url.hash).toBe('');
         }
     });
 
-    it.each(['', '.', '..'])('refuses %j as a path segment', (id) => {
+    it.each([
+        '',
+        '.',
+        '..',
+        '../../admin',
+        'x/../../y',
+        'a/b',
+        '/a',
+        'a\\b',
+        'a..b',
+        '%2e%2e',
+        '%2f..%2f',
+        'a%00',
+        'a%b',
+        'a\u0000b',
+        'a\r\nb',
+        'a\tb',
+        'x'.repeat(201),
+    ])('L6: refuses %j as a path segment, rather than encode it', (id) => {
         expect(() => pathSegment(id)).toThrow('Refused a path segment that is not a plain one.');
+    });
+});
+
+describe('M1: one deadline over the whole exchange', () => {
+    let api: FakeApi;
+    beforeEach(async () => {
+        api = await fakeMesubApi();
+    });
+    afterEach(() => api.close());
+
+    const client = (timeoutMs: number) =>
+        new MesubClient({
+            baseUrl: api.url,
+            token: TOKEN,
+            serviceSecret: new Secret(SERVICE_SECRET),
+            timeoutMs,
+        });
+    const failed = (call: Promise<unknown>) =>
+        call.then(
+            () => undefined,
+            (reason: unknown) => reason as MesubApiError,
+        );
+
+    it.each([
+        ['stalls after its headers', false],
+        ['drips a byte at a time', true],
+    ])('ends a call to an API that %s, and lets the socket go', async (_case, drip) => {
+        api.intercept((_req, res) => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.write('{"status":');
+            if (drip) {
+                const timer = setInterval(() => res.write(' '), 10);
+                res.on('close', () => clearInterval(timer));
+            }
+            return true;
+        });
+
+        for (const call of [() => client(80).health(), () => client(80).whoami()]) {
+            const started = Date.now();
+            const error = await failed(call());
+
+            expect(error).toMatchObject({ status: null, code: 'unavailable', retryable: true });
+            expect(error?.message).toBe('Mesub did not answer within 80 ms.');
+            expect(Date.now() - started).toBeLessThan(1000);
+            await vi.waitFor(() => expect(api.pending()).toBe(0));
+        }
+    });
+
+    it('ends a call whose caller left while the body was still coming', async () => {
+        api.intercept((_req, res) => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.write('{"status":');
+            return true;
+        });
+        const leaving = new AbortController();
+        const call = failed(client(5000).health(leaving.signal));
+        setTimeout(() => leaving.abort(), 30);
+
+        const started = Date.now();
+        expect(await call).toMatchObject({ status: null, code: 'unavailable' });
+        expect(Date.now() - started).toBeLessThan(1000);
+        await vi.waitFor(() => expect(api.pending()).toBe(0));
+    });
+
+    it('does not read an answer without end', async () => {
+        api.intercept((_req, res) => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            const chunk = 'x'.repeat(64 * 1024);
+            const timer = setInterval(() => res.write(chunk), 1);
+            res.on('close', () => clearInterval(timer));
+            return true;
+        });
+
+        const started = Date.now();
+        const error = await failed(client(5000).health());
+
+        expect(error).toMatchObject({ code: 'unexpected', retryable: false });
+        expect(Date.now() - started).toBeLessThan(3000);
+        await vi.waitFor(() => expect(api.pending()).toBe(0));
+    });
+});
+
+describe('L7: the service secret', () => {
+    it('is read back in one module only: the one that sends it', async () => {
+        const { readdirSync, readFileSync } = await import('node:fs');
+        const root = new URL('../src/', import.meta.url);
+        const files = readdirSync(root, { recursive: true })
+            .map(String)
+            .filter((file) => file.endsWith('.ts'));
+
+        const readers = files.filter((file) =>
+            readFileSync(new URL(file, root), 'utf8').includes('revealSecret'),
+        );
+        expect(readers.sort()).toEqual(['mesub/client.ts', 'secret.ts']);
     });
 });

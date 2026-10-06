@@ -1,4 +1,10 @@
-import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
+import {
+    createServer,
+    type IncomingHttpHeaders,
+    type IncomingMessage,
+    type Server,
+    type ServerResponse,
+} from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
@@ -66,6 +72,20 @@ export interface FakeApi {
     hold: () => () => void;
     /** Keeps every next `/agent/whoami` waiting. */
     holdWhoami: () => () => void;
+    /** Makes every `/agent/whoami` take this long, in milliseconds. */
+    delayWhoami: (ms: number) => void;
+    /**
+     * Takes over: every next call goes to this instead, raw. Returning false
+     * hands the call back to the fake. Undefined: back to normal.
+     */
+    intercept: (handler?: (req: IncomingMessage, res: ServerResponse) => boolean) => void;
+    /** Whether the fake would vouch for a token right now. */
+    knows: (token: string) => FakeConnection | undefined;
+    /**
+     * Calls the fake still has an answer open for: what a client that gave up
+     * must have let go of. Not sockets: a client may open an idle one again.
+     */
+    pending: () => number;
     close: () => Promise<void>;
 }
 
@@ -90,6 +110,9 @@ export async function fakeMesubApi(): Promise<FakeApi> {
     let forced: Answer | undefined;
     let gate: Promise<void> = Promise.resolve();
     let whoamiGate: Promise<void> = Promise.resolve();
+    let delay = 0;
+    let interceptor: ((req: IncomingMessage, res: ServerResponse) => boolean) | undefined;
+    let pending = 0;
 
     const whoami = (headers: IncomingHttpHeaders): Answer => {
         if (forced) return forced;
@@ -118,8 +141,12 @@ export async function fakeMesubApi(): Promise<FakeApi> {
     const server = createServer(async (req, res) => {
         const path = req.url ?? '';
         calls.push({ method: req.method ?? '', path, headers: req.headers });
+        pending += 1;
+        res.on('close', () => (pending -= 1));
+        if (interceptor?.(req, res)) return;
         const isWhoami = path === '/agent/whoami';
         await (isWhoami ? whoamiGate : gate);
+        if (isWhoami && delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
         const { status, body, headers } = isWhoami ? whoami(req.headers) : next;
         res.writeHead(status, { 'Content-Type': 'application/json', ...headers });
         res.end(typeof body === 'string' ? body : JSON.stringify(body));
@@ -171,6 +198,17 @@ export async function fakeMesubApi(): Promise<FakeApi> {
         holdWhoami: holder((promise) => {
             whoamiGate = promise;
         }),
+        delayWhoami: (ms) => {
+            delay = ms;
+        },
+        intercept: (handler) => {
+            interceptor = handler;
+        },
+        knows: (token) => {
+            const connection = connections.get(token);
+            return connection && connection.expires_at > Date.now() / 1000 ? connection : undefined;
+        },
+        pending: () => pending,
         close: () => close(server),
     };
     api.issue(TOKEN);
@@ -212,6 +250,9 @@ export async function startServer(
         LOG_LEVEL: 'debug',
         MCP_PUBLIC_URL: PUBLIC_URL,
         MESUB_SERVICE_SECRET: SERVICE_SECRET,
+        // The fakes are plain http on this machine: said so for a hosted public URL.
+        MESUB_API_PRIVATE_NETWORK: 'true',
+        CLIENT_IP_HEADER: 'none',
         MESUB_ISSUER_URL: apiUrl,
         ...env,
         MESUB_API_URL: apiUrl,

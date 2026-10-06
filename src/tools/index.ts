@@ -6,7 +6,7 @@ import type {
 } from '@modelcontextprotocol/server';
 import type * as z from 'zod';
 
-import { callerOf } from '../auth.js';
+import { addressOf, callerOf, loggableName } from '../auth.js';
 import type { Logger } from '../logger.js';
 import type { MesubClient } from '../mesub/client.js';
 import { MesubApiError } from '../mesub/errors.js';
@@ -47,10 +47,12 @@ function register<Input extends z.ZodObject, Output extends z.ZodObject>(
     const { name, title, description, inputSchema, outputSchema, annotations } = tool;
 
     const call = async (args: unknown, context: ServerContext): Promise<CallToolResult> => {
+        // Set by the auth seam (src/auth.ts) for every request let through.
+        const authInfo = context.http?.authInfo;
+        const caller = callerOf(authInfo);
+        const started = performance.now();
+        let outcome = 'ok';
         try {
-            // Set by the auth seam (src/auth.ts) for every request let through.
-            const authInfo = context.http?.authInfo;
-            const caller = callerOf(authInfo);
             if (authInfo === undefined || caller === undefined) {
                 throw new MesubApiError('This call carries no access token.', {
                     status: 401,
@@ -70,7 +72,20 @@ function register<Input extends z.ZodObject, Output extends z.ZodObject>(
             // Parsed on the way out too: a field the schema does not name never leaves.
             return success(outputSchema.parse(data), text);
         } catch (error) {
+            outcome = error instanceof MesubApiError ? error.code : 'internal_error';
             return failure(error, name, logger);
+        } finally {
+            // The trace a token leaves: who called what, from where, and how it
+            // ended. Never an argument nor a result, which are the merchant's.
+            logger.info('tool call', {
+                tool: name,
+                outcome,
+                durationMs: Math.round(performance.now() - started),
+                connectionId: caller?.connectionId ?? null,
+                projectId: caller?.projectId ?? null,
+                clientName: caller ? loggableName(caller.clientName) : null,
+                address: addressOf(authInfo),
+            });
         }
     };
 

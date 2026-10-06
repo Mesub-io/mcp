@@ -1,6 +1,6 @@
 import type * as z from 'zod';
 
-import type { Secret } from '../secret.js';
+import { revealSecret, type Secret } from '../secret.js';
 import { VERSION } from '../version.js';
 import { MesubApiError, codeForStatus } from './errors.js';
 import { agentWhoamiSchema, apiHealthSchema, type AgentWhoami, type ApiHealth } from './schemas.js';
@@ -16,6 +16,8 @@ const SERVICE_SECRET_HEADER = 'X-Mesub-Service-Secret';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_MESSAGE_LENGTH = 500;
+/** The longest answer read. The API's are a few kilobytes: past this, something else is talking. */
+const MAX_RESPONSE_BYTES = 1024 * 1024;
 const REDACTED = '[redacted]';
 
 export interface MesubClientOptions {
@@ -52,20 +54,31 @@ interface CallOptions<T> {
 // One path segment after another, of unreserved characters and percent
 // escapes. No query, no fragment, no backslash, nothing a header could end on.
 const PLAIN_PATH = /^(?:\/(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})+)+$/;
-const DOT_SEGMENT = /^(?:\.|%2e){1,2}$/i;
+// An escape that hides a separator from this check and shows it to whoever
+// decodes next: a slash, a backslash, a dot, a percent sign, a control character.
+const ENCODED_SEPARATOR = /%(?:2f|5c|2e|25|[01][0-9a-f]|7f)/i;
+const MAX_SEGMENT_LENGTH = 200;
+// What an id never holds, and a path must never be built from.
+// eslint-disable-next-line no-control-regex
+const NOT_AN_ID = /[/\\%\u0000-\u001f\u007f]|\.\./;
 
 /**
  * A value read from a caller (an id, a name) as one segment of a path. Every
  * method that puts one in a path goes through here, so no argument of a tool
- * can reach another route, another host or the query.
+ * can reach another route, another host or the query. A value holding a
+ * separator is refused, not encoded: an id is not a path.
  */
 export function pathSegment(value: string): string {
-    const segment = encodeURIComponent(value);
-    if (segment === '' || DOT_SEGMENT.test(segment)) {
+    if (
+        value === '' ||
+        value === '.' ||
+        value.length > MAX_SEGMENT_LENGTH ||
+        NOT_AN_ID.test(value)
+    ) {
         // Never the value: it came from a caller.
         throw new Error('Refused a path segment that is not a plain one.');
     }
-    return segment;
+    return encodeURIComponent(value);
 }
 
 /**
@@ -73,7 +86,10 @@ export function pathSegment(value: string): string {
  * the base URL: a query goes through `query`, where every value is encoded.
  */
 export function apiUrl(baseUrl: string, path: string, query: Record<string, QueryValue> = {}): URL {
-    const plain = PLAIN_PATH.test(path) && !path.split('/').some((part) => DOT_SEGMENT.test(part));
+    const plain =
+        PLAIN_PATH.test(path) &&
+        !ENCODED_SEPARATOR.test(path) &&
+        !path.split('/').some((part) => part === '.' || part === '..');
     // Never `new URL(path, base)`, which drops a path the base carries.
     const url = plain && URL.canParse(baseUrl + path) ? new URL(baseUrl + path) : undefined;
     const base = new URL(baseUrl);
@@ -145,28 +161,22 @@ export class MesubClient {
     #credentials(): Record<string, string> {
         return {
             Authorization: `Bearer ${this.#token}`,
-            [SERVICE_SECRET_HEADER]: this.#serviceSecret.reveal(),
+            [SERVICE_SECRET_HEADER]: revealSecret(this.#serviceSecret),
         };
     }
 
     /** A text from the API, with a credential it would quote back taken out. */
     #scrub(text: string): string {
-        return text
-            .replaceAll(this.#serviceSecret.reveal(), REDACTED)
-            .replaceAll(this.#token, REDACTED);
+        return this.#serviceSecret.scrub(text).replaceAll(this.#token, REDACTED);
     }
 
     async #call<T>(method: string, path: string, options: CallOptions<T>): Promise<T> {
         const url = apiUrl(this.#baseUrl, path, options.query);
-
         const timeoutMs = options.timeoutMs ?? this.#timeoutMs;
-        const timeout = AbortSignal.timeout(timeoutMs);
-        const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
 
-        let response: Response;
-        let text: string;
-        try {
-            response = await this.#fetch(url, {
+        const { response, text } = await this.#exchange(
+            url,
+            {
                 method,
                 headers: {
                     ...(options.as === 'agent' && this.#credentials()),
@@ -178,20 +188,10 @@ export class MesubClient {
                 ...(options.body !== undefined && { body: JSON.stringify(options.body) }),
                 // The credentials go to the Mesub API and nowhere it points at.
                 redirect: 'error',
-                signal,
-            });
-            text = await response.text();
-        } catch {
-            // No cause kept, and none of its message: it may quote the URL or a header.
-            const message = timeout.aborted
-                ? `Mesub did not answer within ${timeoutMs} ms.`
-                : 'Could not reach the Mesub API.';
-            throw new MesubApiError(message, {
-                status: null,
-                code: 'unavailable',
-                retryable: true,
-            });
-        }
+            },
+            timeoutMs,
+            options.signal,
+        );
 
         const body = parsed(text);
         if (!response.ok) throw this.#errorFrom(response, body);
@@ -205,6 +205,91 @@ export class MesubClient {
             });
         }
         return result.data;
+    }
+
+    /**
+     * One request and the whole of its answer, under ONE deadline: the
+     * headers and the body. An API that answers its headers and then stalls,
+     * or drips its body, is given up on like one that never answers.
+     *
+     * The deadline is raced, not only signalled: aborting the fetch is what
+     * frees the socket, and the race is what ends the wait whatever the fetch
+     * does with its signal.
+     */
+    async #exchange(
+        url: URL,
+        init: RequestInit,
+        timeoutMs: number,
+        caller: AbortSignal | undefined,
+    ): Promise<{ response: Response; text: string }> {
+        const abort = new AbortController();
+        let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+        let ended: 'deadline' | 'caller' | 'too long' | undefined;
+
+        const end = (why: NonNullable<typeof ended>) => {
+            ended ??= why;
+            abort.abort();
+            // Cancelling the read is what lets go of a body already coming.
+            void reader?.cancel().catch(() => {});
+        };
+        const stopped = new Promise<never>((_resolve, reject) => {
+            abort.signal.addEventListener('abort', () => reject(new Error('stopped')), {
+                once: true,
+            });
+        });
+        // Nobody may be listening any more when it rejects.
+        stopped.catch(() => {});
+
+        const timer = setTimeout(() => end('deadline'), timeoutMs);
+        const onCallerLeft = () => end('caller');
+        caller?.addEventListener('abort', onCallerLeft, { once: true });
+        if (caller?.aborted) end('caller');
+
+        const exchange = (async () => {
+            const response = await this.#fetch(url, { ...init, signal: abort.signal });
+            const chunks: Uint8Array[] = [];
+            let size = 0;
+            reader = response.body?.getReader();
+            while (reader) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                size += value.byteLength;
+                if (size > MAX_RESPONSE_BYTES) {
+                    end('too long');
+                    throw new Error('too long');
+                }
+                chunks.push(value);
+            }
+            return { response, text: Buffer.concat(chunks).toString('utf8') };
+        })();
+        // The race may be over before it settles.
+        exchange.catch(() => {});
+
+        try {
+            return await Promise.race([exchange, stopped]);
+        } catch {
+            end('caller');
+            if (ended === 'too long') {
+                throw new MesubApiError('Mesub answered with a body this server cannot read.', {
+                    status: null,
+                    code: 'unexpected',
+                    retryable: false,
+                });
+            }
+            // No cause kept, and none of its message: it may quote the URL or a header.
+            const message =
+                ended === 'deadline'
+                    ? `Mesub did not answer within ${timeoutMs} ms.`
+                    : 'Could not reach the Mesub API.';
+            throw new MesubApiError(message, {
+                status: null,
+                code: 'unavailable',
+                retryable: true,
+            });
+        } finally {
+            clearTimeout(timer);
+            caller?.removeEventListener('abort', onCallerLeft);
+        }
     }
 
     /**
