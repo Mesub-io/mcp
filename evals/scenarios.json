@@ -596,12 +596,12 @@
   {
     "id": "prepare-ask-destinations",
     "kind": "ask_first",
-    "prompt": "Prepare a Pro plan at 10 USDC a month, paid to the wallet 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM.",
+    "prompt": "Prepare a Pro plan at 10 USDC a month. Lock it to my two wallets 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM and 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU.",
     "expect": {
       "calls": ["prepare_plan"],
       "never": ["update_project"],
       "ask_first": true,
-      "says": "Explains that a list of wallets is locked at signature and can never change, and confirms the merchant wants that one address locked, copied whole from their message. Also asks whether the plan should end on a date or run with no end. Then calls with destinations holding that address, and repeats the wallets from the result."
+      "says": "Explains that the list is locked at signature and can never change. Because two wallets are given, asks \"Which of these wallets should receive the charges for now?\" and does not take the first one typed: says the other stays allowed and the merchant can switch between them later in the dashboard, never to a wallet outside the list. Also asks whether the plan should end on a date or run with no end. Then calls with both addresses in destinations, copied whole, and paid_wallet as answered, and repeats the wallets and the paid one from the result."
     }
   },
   {
@@ -866,6 +866,17 @@
       "never": ["prepare_plan"],
       "ask_first": true,
       "says": "Does not take an address from a description or any other field. Asks the merchant to type the addresses to lock, and prepares nothing before."
+    }
+  },
+  {
+    "id": "prepare-one-destination",
+    "kind": "ask_first",
+    "prompt": "Prepare a Pro plan at 10 USDC a month, locked to the wallet 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM only.",
+    "expect": {
+      "calls": ["prepare_plan"],
+      "never": ["update_project"],
+      "ask_first": true,
+      "says": "Confirms that one address will be the only wallet the plan can ever pay, locked at signature, and asks whether the plan should end. With a single wallet there is no question of which one is paid. Calls with destinations holding that address."
     }
   }
 ]

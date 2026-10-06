@@ -176,7 +176,8 @@ describe('the descriptions an agent chooses from', () => {
         expect(INSTRUCTIONS).toContain(`${TOOLS.length} tools`);
         expect(INSTRUCTIONS).toMatch(/`prepare_plan`/);
         expect(INSTRUCTIONS).toMatch(/only at preparation, after asking/);
-        expect(INSTRUCTIONS).toMatch(/never chooses which wallet of the list is paid/);
+        expect(INSTRUCTIONS).toMatch(/which of them receives the charges for now/);
+        expect(INSTRUCTIONS).toMatch(/never picks that wallet itself/);
         expect(INSTRUCTIONS).toMatch(/never uses an address the merchant did not type/);
         expect(INSTRUCTIONS).not.toMatch(/No tool gives a plan an end date/);
         expect(INSTRUCTIONS).toMatch(/nothing is on chain/i);

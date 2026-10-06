@@ -147,12 +147,15 @@ describe('prepare_plan', () => {
             }
             // The two questions only the merchant answers, asked in so many words.
             expect(description).toContain(
-                '"Do you want to lock the receiving wallets, and if so which ones?"',
+                '"Do you want to lock the receiving wallets, and if so which ones, and which ' +
+                    'of them should receive the charges for now?"',
             );
             expect(description).toContain('"Should this plan end on a date, or run with no end?"');
             expect(description).toMatch(/never answer for them/);
             expect(description).toMatch(/only, at preparation/);
-            expect(description).toMatch(/never chooses which wallet of the list is paid/);
+            expect(description).toMatch(
+                /the wallet of the list that is paid is the one the merchant named/,
+            );
             expect(description).toMatch(/before signing/);
             expect(description).toMatch(/add a logo/);
             expect(description).toMatch(
@@ -188,6 +191,7 @@ describe('prepare_plan', () => {
                     'retry_attempts',
                     'retry_delay_minutes',
                     'destinations',
+                    'paid_wallet',
                     'ends_at',
                 ].sort(),
             );
@@ -202,6 +206,13 @@ describe('prepare_plan', () => {
             expect(destinations).toMatch(/change the receiving wallet later in the dashboard/);
             expect(destinations).toMatch(/never invent, complete or guess one/);
             expect(destinations).toMatch(/typed in this conversation/);
+            expect(destinations).toMatch(/opens the token account of each listed wallet/);
+            expect(destinations).toMatch(/needs nothing prepared in advance/);
+            const paid = schema.properties.paid_wallet?.description ?? '';
+            expect(paid).toContain('"Which of these wallets should receive the charges for now?"');
+            expect(paid).toMatch(/never to a wallet outside it/);
+            expect(paid).toMatch(/switch among the wallets of the list later in the dashboard/);
+            expect(paid).toMatch(/never pick it yourself/);
             const ends = schema.properties.ends_at?.description ?? '';
             expect(ends).toMatch(/Ask the merchant, never decide/);
             expect(ends).toMatch(/runs until the merchant closes it/);
@@ -539,9 +550,12 @@ describe('prepare_plan', () => {
         const LOCKED = [WALLET, RECEIVER];
         const END = '2027-01-31T23:59:59.000Z';
         const TWO_WALLETS =
-            'The money can only ever go to these 2 wallets: "7xKX...gAsU", "9WzD...AWWM" ' +
-            '(charges pay "7xKX...gAsU"). That list is locked once the plan is signed and can ' +
-            'never change.';
+            'The money can only ever go to these 2 wallets: "7xKX...gAsU", "9WzD...AWWM". ' +
+            'Charges pay "7xKX...gAsU" for now; the merchant can switch among the listed ' +
+            'wallets later, never outside them. That list is locked once the plan is signed ' +
+            'and can never change.';
+        /** Two wallets locked, the first one paid: what the merchant answered. */
+        const PAID = { destinations: LOCKED, paid_wallet: WALLET };
         const ENDS =
             'It ends on 2027-01-31 23:59:59 UTC: nobody has access after that, and the last ' +
             'period is charged in full.';
@@ -562,7 +576,7 @@ describe('prepare_plan', () => {
         it('sends the wallets as given, in their order, and nothing of an end', async () => {
             answered({ destinations: LOCKED, receiver: WALLET });
 
-            await prepared({ ...PRO, destinations: LOCKED });
+            await prepared({ ...PRO, ...PAID });
 
             expect(sentBody()).toEqual({
                 name: 'Pro',
@@ -638,12 +652,12 @@ describe('prepare_plan', () => {
             // Four is the most a plan takes.
             const four = [WALLET, RECEIVER, OTHER_WALLET, USDT];
             answered({ destinations: four, receiver: WALLET });
-            await prepared({ ...PRO, destinations: four });
+            await prepared({ ...PRO, destinations: four, paid_wallet: WALLET });
             expect(sentBody().destinations).toEqual(four);
         });
 
         it("still takes no receiver: which wallet of the list is paid is not the agent's to choose", async () => {
-            await refused({ ...PRO, destinations: LOCKED, receiver: RECEIVER }, /receiver/);
+            await refused({ ...PRO, ...PAID, receiver: RECEIVER }, /receiver/);
         });
 
         it('says its own wallet and no end, with neither', async () => {
@@ -653,7 +667,7 @@ describe('prepare_plan', () => {
         it('says the wallets, their number and that they are locked, with a list', async () => {
             answered({ destinations: LOCKED, receiver: WALLET });
 
-            const result = await call({ ...PRO, destinations: LOCKED });
+            const result = await call({ ...PRO, ...PAID });
 
             expect(sentence(result)).toBe(sentenceOf(TWO_WALLETS, NO_END));
             expect((result.structuredContent as Data).plan).toMatchObject({
@@ -678,7 +692,7 @@ describe('prepare_plan', () => {
         it('says both, with both', async () => {
             answered({ destinations: LOCKED, receiver: WALLET, endsAt: END });
 
-            const line = sentence(await call({ ...PRO, destinations: LOCKED, ends_at: END }));
+            const line = sentence(await call({ ...PRO, ...PAID, ends_at: END }));
 
             expect(line).toBe(sentenceOf(TWO_WALLETS, ENDS));
             expect(line.length).toBeLessThan(900);
@@ -687,38 +701,112 @@ describe('prepare_plan', () => {
         it('says one wallet as one, and four as four', async () => {
             answered({ destinations: [WALLET], receiver: WALLET });
             expect(sentence(await call({ ...PRO, destinations: [WALLET] }))).toContain(
-                'The money can only ever go to this 1 wallet: "7xKX...gAsU" (charges pay ' +
-                    '"7xKX...gAsU"). That list is locked',
+                'The money can only ever go to this 1 wallet: "7xKX...gAsU", which charges ' +
+                    'pay. That list is locked',
             );
 
             const four = [WALLET, RECEIVER, OTHER_WALLET, USDT];
             answered({ destinations: four, receiver: WALLET });
-            const line = sentence(await call({ ...PRO, destinations: four }));
+            const line = sentence(await call({ ...PRO, destinations: four, paid_wallet: WALLET }));
             expect(line).toContain(
                 'these 4 wallets: "7xKX...gAsU", "9WzD...AWWM", "3h1z...p5UG", "Es9v...wNYB"',
             );
             expect(line.length).toBeLessThan(900);
         });
 
-        it('does not say which wallet is paid when Mesub names one outside the list', async () => {
-            answered({ destinations: LOCKED, receiver: OTHER_WALLET });
+        it('puts the wallet the merchant chose first, and keeps the others in the order given', async () => {
+            const three = [WALLET, RECEIVER, OTHER_WALLET];
+            for (const [paid_wallet, sent] of [
+                [WALLET, [WALLET, RECEIVER, OTHER_WALLET]],
+                [RECEIVER, [RECEIVER, WALLET, OTHER_WALLET]],
+                [OTHER_WALLET, [OTHER_WALLET, WALLET, RECEIVER]],
+            ] as const) {
+                answered({ destinations: sent, receiver: paid_wallet });
 
-            const line = sentence(await call({ ...PRO, destinations: LOCKED }));
+                const result = await call({ ...PRO, destinations: three, paid_wallet });
 
-            expect(line).toContain('"7xKX...gAsU", "9WzD...AWWM". That list is locked');
-            expect(line).not.toContain('3h1z');
+                expect(result.isError, paid_wallet).toBeFalsy();
+                expect(sentBody().destinations).toEqual(sent);
+                // Never a receiver: the API pays the first of the list.
+                expect(Object.keys(sentBody()).sort()).toEqual(
+                    ['amount', 'destinations', 'mint', 'name', 'periodHours'].sort(),
+                );
+                expect((result.structuredContent as Data).plan.receiver).toBe(paid_wallet);
+            }
+            expect(
+                sentence(await call({ ...PRO, destinations: three, paid_wallet: OTHER_WALLET })),
+            ).toContain(
+                'these 3 wallets: "3h1z...p5UG", "7xKX...gAsU", "9WzD...AWWM". Charges pay ' +
+                    '"3h1z...p5UG" for now; the merchant can switch among the listed wallets ' +
+                    'later, never outside them.',
+            );
+        });
+
+        it('takes one wallet alone as the one that is paid, named or not', async () => {
+            answered({ destinations: [WALLET], receiver: WALLET });
+
+            await prepared({ ...PRO, destinations: [WALLET] });
+            expect(sentBody().destinations).toEqual([WALLET]);
+            await prepared({ ...PRO, destinations: [WALLET], paid_wallet: WALLET });
+            expect(sentBody().destinations).toEqual([WALLET]);
+        });
+
+        it('refuses, before any call, several wallets with none chosen, and a choice outside the list', async () => {
+            for (const args of [
+                { destinations: LOCKED },
+                { destinations: [WALLET, RECEIVER, OTHER_WALLET] },
+                { destinations: LOCKED, paid_wallet: OTHER_WALLET },
+                { destinations: [WALLET], paid_wallet: RECEIVER },
+                { destinations: LOCKED, paid_wallet: '7xKX...gAsU' },
+                { destinations: LOCKED, paid_wallet: `${WALLET} ` },
+                { destinations: LOCKED, paid_wallet: 0 },
+                { destinations: LOCKED, paid_wallet: null },
+                { destinations: LOCKED, paid_wallet: [WALLET] },
+                { paid_wallet: WALLET },
+            ]) {
+                await refused({ ...PRO, ...args }, /paid_wallet/);
+            }
         });
 
         it.each([
-            ['no wallets where some were asked', { destinations: LOCKED }, { destinations: [] }],
-            ['wallets where none was asked', {}, { destinations: LOCKED }],
-            ['another wallet', { destinations: LOCKED }, { destinations: [WALLET, OTHER_WALLET] }],
-            ['one wallet more', { destinations: [WALLET] }, { destinations: LOCKED }],
+            ['another wallet of the list', PAID, { destinations: LOCKED, receiver: RECEIVER }],
+            ['a wallet outside the list', PAID, { destinations: LOCKED, receiver: OTHER_WALLET }],
+            ['what is no address', PAID, { destinations: LOCKED, receiver: POISON }],
             [
-                'the wallets in another order',
-                { destinations: LOCKED },
-                { destinations: [RECEIVER, WALLET] },
+                'another wallet than the only one listed',
+                { destinations: [WALLET] },
+                { destinations: [WALLET], receiver: RECEIVER },
             ],
+        ])(
+            'refuses to present a plan whose charges would pay %s',
+            async (_what, asked, differs) => {
+                answered(differs);
+
+                const result = await call({ ...PRO, ...asked });
+
+                expect(errorOf(result)?.code).toBe('prepared_plan_mismatch');
+                expect(text(result)).toMatch(/its wallet the charges pay differ/);
+                expect(text(result)).toMatch(/not to sign it/);
+                expect(text(result)).not.toContain(SIGN_URL);
+                expect(JSON.stringify(result)).not.toContain(POISON);
+            },
+        );
+
+        it("holds no plan without a list to a receiver: it is the merchant's own wallet", async () => {
+            answered({ receiver: OTHER_WALLET });
+
+            const result = await call(PRO);
+
+            expect(result.isError).toBeFalsy();
+            expect(sentence(result)).toContain('It pays the merchant\'s own wallet "3h1z...p5UG"');
+        });
+
+        it.each([
+            ['no wallets where some were asked', PAID, { destinations: [] }],
+            ['wallets where none was asked', {}, { destinations: LOCKED }],
+            ['another wallet', PAID, { destinations: [WALLET, OTHER_WALLET] }],
+            ['one wallet more', { destinations: [WALLET] }, { destinations: LOCKED }],
+            ['the wallets in another order', PAID, { destinations: [RECEIVER, WALLET] }],
             ['a wallet that is no address', { destinations: [WALLET] }, { destinations: [POISON] }],
         ])('refuses to present a plan that came back with %s', async (_what, asked, differs) => {
             answered(differs);

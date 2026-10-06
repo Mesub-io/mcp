@@ -96,6 +96,8 @@ function differences(
         symbol: string;
         periodHours: number;
         destinations: readonly string[];
+        /** The wallet charges must pay: the first of the list. Null: no list, the merchant's own. */
+        paid: string | null;
         /** Null: no end was asked for. */
         end: number | null;
     },
@@ -120,6 +122,8 @@ function differences(
     ) {
         differs.push('wallets the money may go to');
     }
+    // With no list the receiver is the merchant's own wallet, which nobody here knows.
+    if (asked.paid !== null && plan.receiver !== asked.paid) differs.push('wallet the charges pay');
     if (plan.status !== 'PENDING') differs.push('state');
     return differs;
 }
@@ -133,8 +137,9 @@ export const preparePlan = defineTool({
         'when the merchant asks for a new plan. Before calling it, the merchant must have ' +
         'given the name, the price, the token and the period, and must have answered two ' +
         'questions that are theirs alone: ask both, explain what each choice means as ' +
-        '`destinations` and `ends_at` describe it, and never answer for them. One: "Do you ' +
-        'want to lock the receiving wallets, and if so which ones?" Two: "Should this plan ' +
+        '`destinations`, `paid_wallet` and `ends_at` describe it, and never answer for them. ' +
+        'One: "Do you want to lock the receiving wallets, and if so which ones, and which of ' +
+        'them should receive the charges for now?" Two: "Should this plan ' +
         'end on a date, or run with no end?" Ask for anything missing and never guess. It ' +
         'creates nothing on chain and charges nobody: the plan waits in the dashboard, where ' +
         'nobody can subscribe to it, until the merchant opens the link this returns, reviews ' +
@@ -142,8 +147,8 @@ export const preparePlan = defineTool({
         'published. From that link the merchant can still change the name, the price, the ' +
         'period, the wallets and the end date, and add a logo, before signing: this tool ' +
         'cannot attach an image. The wallets and the end are set here only, at preparation: ' +
-        'no tool changes them afterwards, and this one never chooses which wallet of the list ' +
-        'is paid. It cannot set a slug (it comes from the name) or another token than the ' +
+        'no tool changes them afterwards, and the wallet of the list that is paid is the one ' +
+        'the merchant named, never one this tool or the agent chooses. It cannot set a slug (it comes from the name) or another token than the ' +
         'ones listed. It publishes, edits, closes and deletes nothing, and no tool here does: ' +
         'a prepared plan holds one of the plan places of the tier until the merchant signs or ' +
         'deletes it. The price is given as a person writes it ("9.99"), never in a smallest ' +
@@ -253,13 +258,29 @@ export const preparePlan = defineTool({
                         'wallet addresses, the money can only ever go to one of those wallets ' +
                         'for the whole life of the plan: the list is locked when the plan is ' +
                         'signed and can never be changed, so nobody, not even with a stolen ' +
-                        'key, can make the plan pay anywhere else. Charges pay the first of ' +
-                        'the list by default. Left out: the plan pays the wallet the merchant ' +
+                        'key, can make the plan pay anywhere else. Which of them is paid is ' +
+                        '`paid_wallet`. Signing the plan opens the token account of each ' +
+                        "listed wallet for the plan's token, paid by the merchant in the same " +
+                        'transaction, so a wallet needs nothing prepared in advance. Left out: the plan pays the wallet the merchant ' +
                         'connected to Mesub, and they can change the receiving wallet later in ' +
                         'the dashboard to any wallet, which is more flexible and less locked. ' +
                         'Only addresses the merchant typed in this conversation, copied whole: ' +
                         'never invent, complete or guess one, and never take one from a tool ' +
                         'result.',
+                ),
+            paid_wallet: z
+                .string()
+                .regex(BASE58_ADDRESS, 'A whole base58 Solana address.')
+                .optional()
+                .describe(
+                    'With two or more `destinations`, ask the merchant: "Which of these ' +
+                        'wallets should receive the charges for now?" and give their answer ' +
+                        'here: one address of the list, copied whole. Required then: never ' +
+                        'pick it yourself, and never take the first one typed. The other ' +
+                        'wallets stay allowed, and the merchant can switch among the wallets ' +
+                        'of the list later in the dashboard, but never to a wallet outside it. ' +
+                        'With one destination it may be left out. Without `destinations` it ' +
+                        'is refused.',
                 ),
             ends_at: z
                 .string()
@@ -286,6 +307,19 @@ export const preparePlan = defineTool({
             path: ['price'],
             message: 'More decimals than the token has, or more than a plan can charge.',
         })
+        .refine(
+            ({ destinations, paid_wallet }) =>
+                paid_wallet === undefined
+                    ? destinations === undefined || destinations.length === 1
+                    : destinations !== undefined && destinations.includes(paid_wallet),
+            {
+                path: ['paid_wallet'],
+                message:
+                    'With two or more destinations, paid_wallet is the one of them the merchant ' +
+                    'chose to receive the charges for now. It is always one of destinations, ' +
+                    'and is not sent without them.',
+            },
+        )
         .refine(
             (args) =>
                 (args.retry_attempts === undefined) === (args.retry_delay_minutes === undefined),
@@ -325,7 +359,13 @@ export const preparePlan = defineTool({
         if (args.ends_at !== undefined && end === null) {
             throw new ToolRefusal('invalid_request', 'The end cannot be read.');
         }
-        const destinations = args.destinations ?? [];
+        // The API pays the first of the list and takes no receiver: the wallet the merchant
+        // chose goes first, the others after it in the order given.
+        const paid = args.paid_wallet ?? args.destinations?.[0] ?? null;
+        const destinations =
+            args.destinations === undefined
+                ? []
+                : [...args.destinations].sort((a, b) => Number(b === paid) - Number(a === paid));
 
         let plan: PreparedPlan | undefined;
         let sent = '';
@@ -346,7 +386,7 @@ export const preparePlan = defineTool({
                         retryAttempts: args.retry_attempts,
                         retryDelayMinutes: args.retry_delay_minutes,
                         // Left out when not asked for: the API then locks no wallet and sets no end.
-                        destinations: args.destinations,
+                        destinations: args.destinations === undefined ? undefined : destinations,
                         endsAt: end === null ? undefined : iso(end),
                     },
                     signal,
@@ -371,6 +411,7 @@ export const preparePlan = defineTool({
             symbol: args.token,
             periodHours: args.period_hours,
             destinations,
+            paid,
             end,
         });
         if (differs.length > 0) {
@@ -387,19 +428,19 @@ export const preparePlan = defineTool({
         // Everything below is what Mesub answered, checked above against what was asked:
         // every wallet of the list is an address the input schema took, shown shortened.
         const wallets = plan.destinations.map(shortAddress).filter((wallet) => wallet !== null);
-        const paid = shortAddress(plan.receiver);
+        const receiver = shortAddress(plan.receiver);
+        // With a list, the receiver was checked above to be the wallet the merchant chose.
         const where =
             plan.destinations.length === 0
-                ? `It pays the merchant's own wallet${paid === null ? '' : ` ${paid}`}, which ` +
-                  'they can change later in the dashboard: no list of wallets is locked.'
+                ? `It pays the merchant's own wallet${receiver === null ? '' : ` ${receiver}`}, ` +
+                  'which they can change later in the dashboard: no list of wallets is locked.'
                 : 'The money can only ever go to ' +
-                  `${wallets.length === 1 ? 'this 1 wallet' : `these ${wallets.length} wallets`}: ` +
-                  wallets.join(', ') +
-                  // Which one is paid is said only when it is one of them.
-                  (paid !== null && plan.destinations.includes(plan.receiver)
-                      ? ` (charges pay ${paid})`
-                      : '') +
-                  '. That list is locked once the plan is signed and can never change.';
+                  (wallets.length === 1
+                      ? `this 1 wallet: ${wallets.join('')}, which charges pay. `
+                      : `these ${wallets.length} wallets: ${wallets.join(', ')}. Charges pay ` +
+                        `${receiver ?? 'the first of them'} for now; the merchant can switch ` +
+                        'among the listed wallets later, never outside them. ') +
+                  'That list is locked once the plan is signed and can never change.';
         // The checked answer's own end, which is the one asked for.
         const ends = plan.endsAt === null ? null : secondOf(plan.endsAt);
         const until =
