@@ -65,7 +65,7 @@ In the memory of each instance: two instances count apart, and a restart forgets
 
 A token let in gives its place back, so an address is not held back by its valid traffic. A token not let in does not: refused, unanswered by the API, or over its connection's limit. So however many tokens an address makes up, the API is asked about 30 a minute. A token the API just refused is also refused for 30 seconds without asking again (10 000 remembered at most, by their hash); a refused token never becomes good, so this can only save a call. Callers behind one address share its budgets: one of them sending bad tokens can keep the others out for a minute.
 
-The address is the socket peer. Behind a proxy that is the proxy, for everybody: set `CLIENT_IP_HEADER` to the header that proxy writes the client's address in, over whatever the client sent. `X-Forwarded-For` is never read: a client writes its own.
+The address is the socket peer. Behind a proxy that is the proxy, for everybody: set `CLIENT_IP_HEADER` to the header that proxy writes the client's address in, over whatever the client sent. `X-Forwarded-For` is never read: a client writes its own. Set the variable only when that proxy is the one way in: reached directly, a client would write the header itself and get a budget per value.
 
 ## Run it locally
 
