@@ -1,0 +1,29 @@
+name: Docs index
+
+# search_docs searches an index committed in this repository. This fails the
+# day the docs say something the index does not, so it is rebuilt, not forgotten.
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    name: index is what the docs say
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      # Builds the index from the tip of the docs' main and compares its pages
+      # and sections with the committed ones. A docs commit that changes no
+      # page does not fail it.
+      - run: node scripts/build-docs-index.mjs --stale
