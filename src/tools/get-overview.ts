@@ -19,8 +19,9 @@ const totals = z.object({
     retry_to_come: z
         .number()
         .describe(
-            'Failed charges that can still be retried. When `retries_automatic` is false ' +
-                'nothing is retried by itself: the merchant fires a retry by hand (`retry_charge`).',
+            'Failed charges that can still be retried: by Mesub on its own when ' +
+                "`retries_automatic` is true, by the merchant's hand (`retry_charge`) when it " +
+                'is false.',
         ),
     recovered: z.number().describe('Failed charges a retry paid since.'),
     not_collected: z.number().describe('Failed charges given up on.'),

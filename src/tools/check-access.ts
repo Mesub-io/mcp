@@ -78,7 +78,11 @@ export const checkAccess = defineTool({
                 // eslint-disable-next-line no-control-regex
                 .regex(/^[^\u0000-\u001f\u007f]*$/, 'No control characters.')
                 .optional()
-                .describe("The merchant's own id for the customer, as given when they subscribed."),
+                .describe(
+                    "The merchant's own id for the customer, as given when they subscribed. A " +
+                        'bare name the merchant uses for a customer, such as `ben`, is usually ' +
+                        'this id: try it before asking who they mean.',
+                ),
             email: z
                 .email()
                 .max(254)

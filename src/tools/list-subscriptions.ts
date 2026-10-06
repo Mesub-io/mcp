@@ -34,7 +34,10 @@ export const listSubscriptions = defineTool({
                     'retried), `stopped` (out of retries, no longer charged), `cancelled`, or ' +
                     '`new` (subscribed within `days`).',
             ),
-        q: searchInput('Part of a wallet address, or a subscription id.').optional(),
+        q: searchInput(
+            "Part of a wallet address, or a subscription id. Not a customer's name nor the " +
+                "app's own id for them: for those use `check_access`.",
+        ).optional(),
         days: z
             .number()
             .int()

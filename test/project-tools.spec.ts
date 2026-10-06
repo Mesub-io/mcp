@@ -169,7 +169,16 @@ describe.each([
         // A tier that retries nothing by itself.
         expect(output('get_overview')).toMatch(/"retries_automatic"/);
         expect(output('get_overview')).toMatch(
-            /When `retries_automatic` is false nothing is retried by itself: the merchant fires a retry by hand \(`retry_charge`\)/,
+            /Failed charges that can still be retried: by Mesub on its own when `retries_automatic` is true, by the merchant's hand \(`retry_charge`\) when it is false/,
+        );
+        expect(output('get_overview')).not.toMatch(/a retry is still scheduled for/);
+
+        // A bare name the merchant says is usually their own id for the customer.
+        expect(input('check_access')).toMatch(
+            /A bare name the merchant uses for a customer, such as `ben`, is usually this id/,
+        );
+        expect(input('list_subscriptions')).toMatch(
+            /Not a customer's name nor the app's own id for them: for those use `check_access`/,
         );
 
         // check_access serves charges raw, and says where the price is.
