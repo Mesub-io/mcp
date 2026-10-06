@@ -1,5 +1,6 @@
 import * as z from 'zod';
 
+import { PLAN_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, plural, tally } from '../text.js';
 import { capped, fit, MAX_LIST_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
@@ -68,7 +69,10 @@ export const listPlans = defineTool({
             text:
                 all.length === 0
                     ? 'The project has no plan yet.'
-                    : `${plural(all.length, 'plan')}: ${tally(all.map((plan) => plan.status))}.` +
+                    : `${plural(all.length, 'plan')}: ${tally(
+                          all.map((plan) => plan.status),
+                          PLAN_STATUSES,
+                      )}.` +
                       (data.truncated ? ` Only the newest ${plans.length} are returned.` : '') +
                       ` ${DATA_NOTICE}`,
         };

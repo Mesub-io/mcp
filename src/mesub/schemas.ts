@@ -1,13 +1,15 @@
 import * as z from 'zod';
 
 import { clip } from '../text.js';
+import { isLink } from './link.js';
 
 // What the tools read from the Mesub API, one schema per answer. An answer is
 // parsed against its schema before a tool sees it: unknown fields are dropped.
 
 /** `GET /health`. */
 export const apiHealthSchema = z.object({
-    status: z.string(),
+    // What the API calls its own state: a word, cut short if it is not.
+    status: z.string().transform((value) => clip(value, 100)),
     /** Seconds since the API process started. */
     uptime: z.number(),
 });
@@ -35,6 +37,9 @@ export type AgentWhoami = z.infer<typeof agentWhoamiSchema>;
 // Unknown fields are dropped, as above: the API may add one tomorrow, and it
 // reaches no agent until a schema here names it. Texts somebody else wrote are
 // cut short on the way in, so every tool is handed bounded data.
+//
+// Types, lengths and what may be null are held strictly. The VALUES of a list
+// the API may grow (a status, an outcome, an event) are not: see `code()`.
 
 export const PLAN_STATUSES = ['PENDING', 'ACTIVE', 'SUNSET', 'FAILED', 'CLOSED'] as const;
 export const SUBSCRIPTION_STATUSES = [
@@ -58,6 +63,20 @@ export const SUBSCRIPTION_BUCKETS = [
     'cancelled',
     'new',
 ] as const;
+export const ACCESS_STATUSES = [
+    'pending',
+    'active',
+    'cancelled',
+    'unpaid',
+    'stopped',
+    'ended',
+    'failed',
+    'superseded',
+    'none',
+] as const;
+export const PAYMENT_STATUSES = ['paid', 'late', 'none'] as const;
+export const UPCOMING_KINDS = ['charge', 'retry', 'ends'] as const;
+export const DELIVERY_STATUSES = ['PENDING', 'DELIVERED', 'FAILED'] as const;
 export const EVENT_GROUPS = ['all', 'payments', 'subscribers', 'account'] as const;
 export const EVENT_BUCKETS = ['day', 'week', 'month'] as const;
 export const OVERVIEW_DAYS = [7, 30, 90] as const;
@@ -79,6 +98,10 @@ export const MAX_DESCRIPTION_LENGTH = 1000;
 export const MAX_REASON_LENGTH = 300;
 export const MAX_EXCERPT_LENGTH = 500;
 export const MAX_DETAIL_LENGTH = 1000;
+/** Past any list of events an endpoint takes, whatever the API adds. */
+export const MAX_WEBHOOK_EVENTS = 64;
+/** An address is kept whole or refused: one cut short is another address. */
+export const MAX_URL_LENGTH = 2048;
 
 const id = z.string().min(1).max(200);
 /** An address, a signature, a slug: kept whole or refused, never cut. */
@@ -94,9 +117,32 @@ const count = z.number().int();
 /** Null: unknown, never zero. */
 const decimals = z.number().int().min(0).max(36).nullable();
 
-const planStatus = z.enum(PLAN_STATUSES);
-const subscriptionStatus = z.enum(SUBSCRIPTION_STATUSES);
-const tier = z.enum(TIERS);
+/** What every value of such a list looks like: one short plain word. */
+const CODE = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+/** What stands for a value that is not even that. */
+export const UNKNOWN_CODE = 'UNKNOWN';
+
+/**
+ * A value out of a list the API may grow: a status, a tier, an outcome, a
+ * kind, the name of an event. A value added since this server was written
+ * must not fail the tool, so none is refused: one that is a short plain word
+ * is kept as it is, and any other string becomes `UNKNOWN`. A tool's sentence
+ * never says one it does not know: it goes through `known()` (src/text.ts).
+ */
+const code = () => z.string().transform((value) => (CODE.test(value) ? value : UNKNOWN_CODE));
+/** How many there are of each value of such a list. A key that is not a plain word is dropped. */
+const countsByCode = () =>
+    z
+        .record(z.string(), count)
+        .transform((counts) =>
+            Object.fromEntries(Object.entries(counts).filter(([key]) => CODE.test(key))),
+        );
+/** An address of the dashboard, kept whole or refused: see `isLink`. */
+const link = z.string().refine(isLink);
+
+const planStatus = code();
+const subscriptionStatus = code();
+const tier = code();
 
 const servedProjectSchema = z.object({
     id,
@@ -152,6 +198,13 @@ export const agentPlanSchema = z.object({
     slug: plain.nullable(),
     name: text(MAX_NAME_LENGTH).nullable(),
     description: text(MAX_DESCRIPTION_LENGTH).nullable(),
+    // Written by the merchant, or by an agent for them: an address to show, never fetched.
+    // Absent from an API older than prepared plans: null then.
+    websiteUrl: z
+        .string()
+        .max(MAX_URL_LENGTH)
+        .nullish()
+        .transform((value) => value ?? null),
     status: planStatus,
     amount,
     mint: plain,
@@ -166,8 +219,20 @@ export const agentPlanSchema = z.object({
     receiverMissingSince: date.nullable(),
     createdAt: date,
     confirmedAt: date.nullable(),
+    // The agent that prepared it, by the name its application gave itself: text somebody else wrote.
+    preparedBy: z
+        .object({ clientName: text(MAX_NAME_LENGTH), at: date })
+        .nullish()
+        .transform((value) => value ?? null),
 });
 export type AgentPlan = z.infer<typeof agentPlanSchema>;
+
+/** `POST /agent/plans`: the plan just prepared, and where its merchant signs it. */
+export const preparedPlanSchema = agentPlanSchema.extend({
+    signUrl: link,
+    nextStep: text(MAX_REASON_LENGTH),
+});
+export type PreparedPlan = z.infer<typeof preparedPlanSchema>;
 
 /** `GET /agent/plans`. */
 export const agentPlansSchema = z.array(
@@ -183,7 +248,7 @@ export type AgentListedPlan = z.infer<typeof agentPlansSchema>[number];
 /** One charge attempt, as the subscription and the plan routes serve it. */
 const attemptSchema = z.object({
     id,
-    outcome: z.enum(PULL_OUTCOMES),
+    outcome: code(),
     reason: text(MAX_REASON_LENGTH).nullable(),
     amount,
     amountUsd: usd.nullable(),
@@ -198,13 +263,13 @@ export type AgentAttempt = z.infer<typeof attemptSchema>;
 /** `GET /agent/plans/:id`. */
 export const agentPlanDetailSchema = z.object({
     plan: agentPlanSchema,
-    subscribers: z.partialRecord(subscriptionStatus, count),
+    subscribers: countsByCode(),
     monthly: amount,
     monthlyUsd: usd.nullable(),
     collected: amount,
     collectedUsd: usd,
     unpricedPaid: count,
-    outcomes: z.partialRecord(z.enum(PULL_OUTCOMES), count),
+    outcomes: countsByCode(),
     failures: z.array(z.object({ reason: text(MAX_REASON_LENGTH), count })),
     upcoming: z.array(
         z.object({ subscriber: plain, dueAt: date, failedPulls: count, retries: count }),
@@ -220,17 +285,10 @@ const subscriptionRowSchema = z.object({
     planId: id,
     planName: text(MAX_NAME_LENGTH).nullable(),
     status: subscriptionStatus,
-    endReason: z
-        .enum([
-            'CANCELLED',
-            'PLAN_REMOVED',
-            'PLAN_REPLACED',
-            'PLAN_ENDED',
-            'AUTHORITY_CLOSED',
-            'CLOSED',
-        ])
-        .nullable(),
-    lateReason: z.enum(['INSUFFICIENT_BALANCE', 'APPROVAL_REVOKED', 'AUTHORITY_CLOSED']).nullable(),
+    // CANCELLED, PLAN_REMOVED, PLAN_REPLACED, PLAN_ENDED, AUTHORITY_CLOSED or CLOSED.
+    endReason: code().nullable(),
+    // INSUFFICIENT_BALANCE, APPROVAL_REVOKED or AUTHORITY_CLOSED.
+    lateReason: code().nullable(),
     hasAccess: z.boolean(),
     accessUntil: date.nullable(),
     cancelledAt: date.nullable(),
@@ -297,32 +355,11 @@ const accessAnswerSchema = z.object({
     wallet: plain.nullable(),
     plan: plain,
     access: z.boolean(),
-    status: z.enum([
-        'pending',
-        'active',
-        'cancelled',
-        'unpaid',
-        'stopped',
-        'ended',
-        'failed',
-        'superseded',
-        'none',
-    ]),
+    status: code(),
     paused: z.boolean(),
-    end_reason: z
-        .enum([
-            'cancelled',
-            'plan_removed',
-            'plan_replaced',
-            'plan_ended',
-            'authority_closed',
-            'closed',
-        ])
-        .nullable(),
-    late_reason: z
-        .enum(['insufficient_balance', 'approval_revoked', 'authority_closed'])
-        .nullable(),
-    payment_status: z.enum(['paid', 'late', 'none']),
+    end_reason: code().nullable(),
+    late_reason: code().nullable(),
+    payment_status: code(),
     subscribed_since: date.nullable(),
     first_subscribed_at: date.nullable(),
     current_period_end: date.nullable(),
@@ -334,7 +371,7 @@ const accessAnswerSchema = z.object({
     attempts: z
         .array(
             z.object({
-                outcome: z.enum(['paid', 'skipped', 'rejected', 'blocked']),
+                outcome: code(),
                 reason: text(MAX_REASON_LENGTH).nullable(),
                 amount,
                 attempted_at: date,
@@ -367,9 +404,9 @@ export type AgentEventDays = z.infer<typeof agentEventDaysSchema>;
 export const agentEventLinesSchema = z.array(
     z.object({
         id,
-        source: z.enum(['pull', 'event']),
+        source: code(),
         // An outcome or an event type: a name in capitals, whichever it is.
-        type: z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/),
+        type: code(),
         occurredAt: date,
         subscriptionId: id.nullable(),
         subscriber: plain.nullable(),
@@ -401,7 +438,7 @@ export const agentUpcomingSchema = z.array(
         subscriber: plain,
         planId: id,
         planName: text(MAX_NAME_LENGTH).nullable(),
-        kind: z.enum(['charge', 'retry', 'ends']),
+        kind: code(),
         at: date,
         retry: count,
         retriesAllowed: count,
@@ -409,7 +446,7 @@ export const agentUpcomingSchema = z.array(
         mint: plain,
         decimals,
         amountUsd: usd.nullable(),
-        renewalIssue: z.enum(['balance', 'authority']).nullable(),
+        renewalIssue: code().nullable(),
         renewalCheckedAt: date.nullable(),
     }),
 );
@@ -491,7 +528,7 @@ export const agentOverviewSchema = z.object({
         causes: z.array(
             z.object({
                 reason: text(MAX_REASON_LENGTH),
-                owner: z.enum(['subscriber', 'mesub']),
+                owner: code(),
                 count,
                 amountUsd: usd,
             }),
@@ -503,9 +540,9 @@ export type AgentOverview = z.infer<typeof agentOverviewSchema>;
 /** A webhook endpoint. Never its secret. */
 export const webhookEndpointSchema = z.object({
     id,
-    // The API takes 2048 characters at most: kept whole, an address cut short is another address.
-    url: z.string().max(2048),
-    events: z.array(z.enum(WEBHOOK_EVENTS)).max(WEBHOOK_EVENTS.length),
+    // The API takes 2048 characters at most.
+    url: z.string().max(MAX_URL_LENGTH),
+    events: z.array(code()).max(MAX_WEBHOOK_EVENTS),
     enabled: z.boolean(),
     secretHint: plain,
     secretRotatedAt: date.nullable(),
@@ -537,7 +574,7 @@ export const webhookDeliverySchema = z.object({
     eventId: id.nullable(),
     type: plain,
     test: z.boolean(),
-    status: z.enum(['PENDING', 'DELIVERED', 'FAILED']),
+    status: code(),
     attempts: count,
     inFlight: z.boolean(),
     lastResponseCode: z.number().nullable(),

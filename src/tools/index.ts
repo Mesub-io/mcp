@@ -26,6 +26,7 @@ import { listWebhookDeliveries } from './list-webhook-deliveries.js';
 import { HARD_RESULT_LENGTH } from './limits.js';
 import { listWebhooks } from './list-webhooks.js';
 import { ping } from './ping.js';
+import { preparePlan } from './prepare-plan.js';
 import { regenerateWebhookSecret } from './regenerate-webhook-secret.js';
 import { failure, success, ToolRefusal } from './result.js';
 import { retryCharge } from './retry-charge.js';
@@ -75,7 +76,18 @@ export const TOOLS: readonly AnyTool[] = [
     getWebhookSecret,
     regenerateWebhookSecret,
     sendTestWebhook,
+    // What is prepared for the merchant to sign.
+    preparePlan,
 ];
+
+/** How the README and the docs sort the tools. */
+export type ToolGroup = 'Read' | 'Act' | 'Prepare';
+
+/** Read: changes nothing. Prepare: leaves the merchant something to sign. Act: the rest. */
+export function groupOf(tool: AnyTool): ToolGroup {
+    if (tool.name.startsWith('prepare_')) return 'Prepare';
+    return tool.annotations.readOnlyHint ? 'Read' : 'Act';
+}
 
 export function registerTools(
     server: McpServer,

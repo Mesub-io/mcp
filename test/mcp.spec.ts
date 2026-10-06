@@ -60,7 +60,7 @@ describe.each([
         const { tools } = await client.listTools();
 
         expect(tools.map((tool) => tool.name)).toEqual(TOOLS.map((tool) => tool.name));
-        expect(tools).toHaveLength(22);
+        expect(tools).toHaveLength(23);
         expect(tools[0]).toMatchObject({
             name: 'ping',
             title: 'Check the Mesub API',

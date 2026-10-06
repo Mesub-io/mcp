@@ -1,5 +1,6 @@
 import * as z from 'zod';
 
+import { quoted } from '../text.js';
 import { defineTool } from './tool.js';
 
 /**
@@ -29,7 +30,8 @@ export const ping = defineTool({
         const health = await mesub.health(signal);
         return {
             data: { status: health.status, uptime_seconds: health.uptime },
-            text: `The Mesub API answered with status "${health.status}".`,
+            // What the API calls its own state: between quotes it cannot close, and cut short.
+            text: `The Mesub API answered with status ${quoted(health.status, 40)}.`,
         };
     },
 });

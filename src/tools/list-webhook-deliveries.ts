@@ -1,5 +1,6 @@
 import * as z from 'zod';
 
+import { DELIVERY_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, plural, tally } from '../text.js';
 import { idInput } from './inputs.js';
 import { fit } from './limits.js';
@@ -70,7 +71,10 @@ export const listWebhookDeliveries = defineTool({
                 deliveries.length === 0
                     ? 'No delivery to this endpoint.'
                     : `${plural(deliveries.length, 'delivery', 'deliveries')}, newest first: ` +
-                      `${tally(deliveries.map((delivery) => delivery.status))}. ` +
+                      `${tally(
+                          deliveries.map((delivery) => delivery.status),
+                          DELIVERY_STATUSES,
+                      )}. ` +
                       (data.has_more
                           ? 'More exist: call again with starting_after set to next_starting_after. '
                           : 'No more pages. ') +

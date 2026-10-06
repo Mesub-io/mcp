@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
-import { DATA_NOTICE } from '../text.js';
+import { DELIVERY_STATUSES } from '../mesub/schemas.js';
+import { DATA_NOTICE, known } from '../text.js';
 import { deliveryOut, deliveryOutput } from './shapes.js';
 import { defineTool } from './tool.js';
 import { webhookEvent, webhookId } from './webhook-inputs.js';
@@ -39,7 +40,7 @@ export const sendTestWebhook = defineTool({
         return {
             data: { delivery: deliveryOut(delivery) },
             text:
-                `The test delivery is queued, status ${delivery.status}. Read ` +
+                `The test delivery is queued, status ${known(delivery.status, DELIVERY_STATUSES)}. Read ` +
                 `list_webhook_deliveries in a moment for what the endpoint answered. ${DATA_NOTICE}`,
         };
     },

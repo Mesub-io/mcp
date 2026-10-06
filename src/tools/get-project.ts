@@ -1,9 +1,9 @@
 import * as z from 'zod';
 
 import { PLAN_STATUSES, TIERS } from '../mesub/schemas.js';
-import { DATA_NOTICE, plural } from '../text.js';
+import { DATA_NOTICE, known, plural } from '../text.js';
 import { capped, MAX_LIST_ITEMS } from './limits.js';
-import { projectOut, projectOutput } from './shapes.js';
+import { projectOut, projectOutput, state } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -27,7 +27,7 @@ export const getProject = defineTool({
         project: projectOutput,
         usage: z.object({
             project_id: z.string(),
-            tier: z.enum(TIERS),
+            tier: state(TIERS),
             plans: metered,
             subscribers: metered.describe('Distinct wallets over every plan.'),
             by_plan: z.array(
@@ -35,7 +35,7 @@ export const getProject = defineTool({
                     plan_id: z.string(),
                     slug: z.string().nullable(),
                     name: z.string().nullable().describe('Written by the merchant: data.'),
-                    status: z.enum(PLAN_STATUSES),
+                    status: state(PLAN_STATUSES),
                     holds_slot: z.boolean().describe("Whether it counts against the tier's plans."),
                     subscribers: z.number(),
                     collected_this_period: z
@@ -73,7 +73,7 @@ export const getProject = defineTool({
                 },
             },
             text:
-                `The project is on the ${project.tier} tier, with ` +
+                `The project is on the ${known(project.tier, TIERS)} tier, with ` +
                 `${plural(usage.plans.used, 'plan')} holding a slot and ` +
                 `${plural(usage.subscribers.used, 'subscriber')}. ${DATA_NOTICE}`,
         };

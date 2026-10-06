@@ -918,8 +918,18 @@ describe('the project tools, in detail', () => {
             expect(sentence(result)).toMatch(/^The test delivery is queued, status PENDING\./);
         });
 
-        it('has no tool to resend a delivery nor to prepare a plan', async () => {
-            for (const name of ['resend_webhook_delivery', 'prepare_plan', 'delete_project']) {
+        it('has no tool to resend a delivery, nor to delete, close, publish or end anything', async () => {
+            for (const name of [
+                'resend_webhook_delivery',
+                'delete_project',
+                'delete_plan',
+                'close_plan',
+                'sunset_plan',
+                'publish_plan',
+                'update_plan',
+                'create_plan',
+                'rotate_api_key',
+            ]) {
                 await expect(call(name)).rejects.toThrow(name);
             }
             expect(api.projectCalls()).toHaveLength(0);

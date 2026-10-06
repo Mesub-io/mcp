@@ -2,6 +2,7 @@ import * as answers from './fixtures/agent-answers.js';
 import {
     DELIVERY_ID,
     PLAN_ID,
+    USDC,
     SUBSCRIPTION_ID,
     WALLET,
     WEBHOOK_ID,
@@ -225,6 +226,34 @@ export const CASES: ToolCase[] = [
         status: 202,
         answer: answers.testDelivery,
     },
+    {
+        tool: 'prepare_plan',
+        args: {
+            name: 'Pro',
+            token: 'USDC',
+            price: '9.99',
+            period_hours: 720,
+            description: 'Everything.',
+            website_url: 'https://fraise.example.test/pro',
+            retry_attempts: 3,
+            retry_delay_minutes: 60,
+        },
+        method: 'POST',
+        pathname: '/agent/plans',
+        query: {},
+        body: {
+            name: 'Pro',
+            mint: USDC,
+            amount: '9990000',
+            periodHours: 720,
+            description: 'Everything.',
+            websiteUrl: 'https://fraise.example.test/pro',
+            retryAttempts: 3,
+            retryDelayMinutes: 60,
+        },
+        status: 201,
+        answer: answers.preparedPlan,
+    },
 ];
 
 export const caseOf = (tool: string): ToolCase => {
@@ -258,4 +287,6 @@ export const ANNOTATIONS: Record<string, [boolean, boolean, boolean, boolean]> =
     get_webhook_secret: [true, false, true, false],
     regenerate_webhook_secret: [false, true, false, false],
     send_test_webhook: [false, false, false, true],
+    // It creates a draft inside Mesub and nothing else: not destructive, not on chain.
+    prepare_plan: [false, false, false, false],
 };

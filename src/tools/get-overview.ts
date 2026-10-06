@@ -5,6 +5,7 @@ import { DATA_NOTICE, plural } from '../text.js';
 import { planFilter } from './inputs.js';
 import { capped, MAX_LIST_ITEMS, MAX_NESTED_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
+import { state } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -117,11 +118,10 @@ export const getOverview = defineTool({
                 .array(
                     z.object({
                         reason: z.string().describe('A short code: data.'),
-                        owner: z
-                            .enum(['subscriber', 'mesub'])
-                            .describe(
-                                "Whose side the failure is on: the subscriber's wallet, or Mesub.",
-                            ),
+                        owner: state(
+                            ['subscriber', 'mesub'],
+                            "Whose side the failure is on: the subscriber's wallet, or Mesub.",
+                        ),
                         count: z.number(),
                         amount_usd: z.string(),
                     }),

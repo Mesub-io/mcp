@@ -431,7 +431,8 @@ describe('M1: one deadline over the whole exchange', () => {
         const started = Date.now();
         const error = await failed(client(5000).health());
 
-        expect(error).toMatchObject({ code: 'unexpected', retryable: false });
+        // Its own code: a tool that asked for too much is told to ask for less.
+        expect(error).toMatchObject({ code: 'response_too_large', status: null, retryable: false });
         expect(Date.now() - started).toBeLessThan(3000);
         await vi.waitFor(() => expect(api.pending()).toBe(0));
     });

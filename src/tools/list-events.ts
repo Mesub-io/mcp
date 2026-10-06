@@ -5,6 +5,7 @@ import { DATA_NOTICE, plural } from '../text.js';
 import { MAX_DAYS, planFilter, searchInput } from './inputs.js';
 import { capped, fit, MAX_LIST_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
+import { state } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -93,9 +94,7 @@ export const listEvents = defineTool({
             .array(
                 z.object({
                     id: z.string(),
-                    source: z
-                        .enum(['pull', 'event'])
-                        .describe('`pull`: a charge. `event`: anything else.'),
+                    source: state(['pull', 'event'], '`pull`: a charge. `event`: anything else.'),
                     type: z
                         .string()
                         .describe(

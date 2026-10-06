@@ -65,7 +65,7 @@ describe.each([
     const call = (name: string, args: Record<string, unknown>) =>
         client.callTool({ name, arguments: args });
 
-    it('are listed after ping and search_docs, and nothing else is', async () => {
+    it('are listed after ping and search_docs, 23 in all, and nothing else is', async () => {
         const { tools } = await client.listTools();
 
         expect(tools.map((tool) => tool.name)).toEqual([
@@ -73,7 +73,7 @@ describe.each([
             'search_docs',
             ...CASES.map((entry) => entry.tool),
         ]);
-        expect(tools).toHaveLength(22);
+        expect(tools).toHaveLength(23);
     });
 
     it('carry the four hints as intended, a strict input and an output schema', async () => {
@@ -239,34 +239,6 @@ describe.each([
                     retryAfterSeconds:
                         'Retry-After' in headers ? Number(headers['Retry-After']) : null,
                 });
-            },
-        );
-    });
-
-    describe('the limits on changes', () => {
-        const writes = CASES.filter((entry) => entry.method !== 'GET');
-
-        it.each(writes)(
-            '$tool says when the connection wrote too much this hour',
-            async (entry) => {
-                api.answer(
-                    429,
-                    refusal(429, 'agent_write_cap_reached', 'Too many changes this hour.', true),
-                    { 'Retry-After': '1800' },
-                );
-
-                const result = await call(entry.tool, entry.args);
-
-                expect(result.isError).toBe(true);
-                expect(text(result)).toMatch(/^Mesub error agent_write_cap_reached: /);
-                expect(text(result)).toMatch(/1800 seconds/);
-                expect(text(result)).toMatch(/Reading still works/);
-                expect(errorOf(result)).toMatchObject({
-                    code: 'agent_write_cap_reached',
-                    retryAfterSeconds: 1800,
-                });
-                // Asked once: nothing here tries again by itself.
-                expect(api.projectCalls()).toHaveLength(1);
             },
         );
     });

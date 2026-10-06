@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
-import { DATA_NOTICE, plural } from '../text.js';
+import { SUBSCRIPTION_STATUSES } from '../mesub/schemas.js';
+import { DATA_NOTICE, known, plural } from '../text.js';
 import { idInput } from './inputs.js';
 import { subscriptionOut, subscriptionOutput } from './shapes.js';
 import { defineTool } from './tool.js';
@@ -32,7 +33,7 @@ export const getSubscription = defineTool({
         return {
             data: { subscription },
             text:
-                `The subscription is ${subscription.status}, with ` +
+                `The subscription is ${known(subscription.status, SUBSCRIPTION_STATUSES)}, with ` +
                 `${plural(subscription.failed_pulls, 'failed charge')} on the current period. ` +
                 `${plural(subscription.attempts.length, 'charge')} returned` +
                 (subscription.attempts_truncated ? ', older ones left out. ' : '. ') +

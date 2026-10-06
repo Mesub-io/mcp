@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
-import { DATA_NOTICE, plural } from '../text.js';
+import { ACCESS_STATUSES, PAYMENT_STATUSES } from '../mesub/schemas.js';
+import { DATA_NOTICE, known, plural } from '../text.js';
 import { capped, MAX_LIST_ITEMS } from './limits.js';
 import { defineTool } from './tool.js';
 
@@ -123,7 +124,8 @@ export const checkAccess = defineTool({
                 },
                 text:
                     `Access is ${answer.access ? 'granted' : 'refused'} on that plan: status ` +
-                    `${answer.status}, payment ${answer.payment_status}` +
+                    `${known(answer.status, ACCESS_STATUSES)}, payment ` +
+                    `${known(answer.payment_status, PAYMENT_STATUSES)}` +
                     `${answer.paused ? ', paused' : ''}. ${DATA_NOTICE}`,
             };
         }

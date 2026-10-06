@@ -3,6 +3,7 @@ export interface MesubApiErrorOptions {
     code: string;
     retryable: boolean;
     retryAfterSeconds?: number | null;
+    walletUrl?: string | null;
     cause?: unknown;
 }
 
@@ -11,7 +12,7 @@ export interface MesubApiErrorOptions {
  * body names (`plan_not_found`, `rate_limited`, ...), stable and made to be
  * branched on. When no Mesub error came back, it is what the status says,
  * `unavailable` when nothing answered, `unexpected` for an answer that cannot
- * be read.
+ * be read, `response_too_large` for one longer than this server reads.
  */
 export class MesubApiError extends Error {
     override readonly name = 'MesubApiError';
@@ -22,6 +23,8 @@ export class MesubApiError extends Error {
     readonly retryable: boolean;
     /** From `Retry-After`, when Mesub sent one. */
     readonly retryAfterSeconds: number | null;
+    /** Where a merchant connects a wallet, when a refusal names it: an address of the dashboard, checked. */
+    readonly walletUrl: string | null;
 
     constructor(message: string, options: MesubApiErrorOptions) {
         super(message, options.cause === undefined ? undefined : { cause: options.cause });
@@ -29,6 +32,7 @@ export class MesubApiError extends Error {
         this.code = options.code;
         this.retryable = options.retryable;
         this.retryAfterSeconds = options.retryAfterSeconds ?? null;
+        this.walletUrl = options.walletUrl ?? null;
     }
 }
 
