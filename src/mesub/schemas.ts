@@ -112,6 +112,11 @@ export const MAX_DESTINATIONS_READ = 16;
 export const MAX_WEBHOOK_EVENTS = 64;
 /** An address is kept whole or refused: one cut short is another address. */
 export const MAX_URL_LENGTH = 2048;
+/** What a token calls itself is free text on chain: cut like any other. */
+export const MAX_TOKEN_SYMBOL_LENGTH = 40;
+export const MAX_TOKEN_NAME_LENGTH = 100;
+/** A logo's address past this is dropped, never cut. */
+export const MAX_TOKEN_LOGO_LENGTH = 512;
 
 const id = z.string().min(1).max(200);
 /** An address, a signature, a slug: kept whole or refused, never cut. */
@@ -133,6 +138,31 @@ const decimals = z.number().int().min(0).max(36).nullable();
 const symbol = z
     .string()
     .max(20)
+    .nullish()
+    .transform((value) => value ?? null);
+/** An address with no blank in it: what a logo's must be to be passed on. */
+const LOGO = /^[\x21-\x7e]+$/;
+/**
+ * What Mesub found for a mint, served beside it: its symbol, its name and its
+ * logo, written by whoever made the token, and whether it is verified. The
+ * texts are cut like any other. The logo's address is somebody else's too: one
+ * too long or holding a blank is dropped, since it may not be cut and is no
+ * reason to refuse a plan. Null from an API older than the field.
+ */
+const token = z
+    .object({
+        symbol: text(MAX_TOKEN_SYMBOL_LENGTH).nullable(),
+        name: text(MAX_TOKEN_NAME_LENGTH).nullable(),
+        logoUrl: z
+            .string()
+            .nullable()
+            .transform((value) =>
+                value !== null && value.length <= MAX_TOKEN_LOGO_LENGTH && LOGO.test(value)
+                    ? value
+                    : null,
+            ),
+        verified: z.boolean(),
+    })
     .nullish()
     .transform((value) => value ?? null);
 /**
@@ -234,6 +264,7 @@ export const agentPlanSchema = z.object({
     status: planStatus,
     amount,
     mint: plain,
+    token,
     symbol: z.string().max(20).nullable(),
     decimals,
     periodHours: z.number(),
@@ -342,6 +373,7 @@ const subscriptionRowSchema = z.object({
     confirmedAt: date.nullable(),
     amount,
     mint: plain,
+    token,
     symbol,
     decimals,
 });
@@ -462,6 +494,7 @@ export const agentEventLinesSchema = z.array(
         amount: amount.nullable(),
         amountUsd: usd.nullable(),
         mint: plain.nullable(),
+        token,
         symbol,
         decimals,
         reason: text(MAX_REASON_LENGTH).nullable(),
@@ -493,6 +526,7 @@ export const agentUpcomingSchema = z.array(
         retriesAllowed: count,
         amount: amount.nullable(),
         mint: plain,
+        token,
         symbol,
         decimals,
         amountUsd: usd.nullable(),
@@ -560,6 +594,7 @@ export const agentOverviewSchema = z.object({
                 retriesAllowed: count,
                 amount,
                 mint: plain,
+                token,
                 symbol,
                 decimals,
                 amountUsd: usd.nullable(),
