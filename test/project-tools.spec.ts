@@ -186,6 +186,24 @@ describe.each([
         expect(description('check_access')).toMatch(/`get_subscription` or `get_plan`/);
         expect(output('check_access')).toMatch(/Raw[^"]*`get_subscription` or `get_plan`/);
 
+        // A block is not a late subscriber, and each cause of the merchant's has its fix.
+        expect(description('check_access')).toMatch(/`blocked_since`[^.]*not a late subscriber/);
+        expect(output('check_access')).toMatch(/does not change `status` nor `payment_status`/);
+        expect(output('check_access')).toMatch(/ends is access, on `access_until`/);
+        for (const fix of [
+            /`puller_not_allowed` \([^)]*add it back/,
+            /`receiver_not_allowed` \([^)]*choose one that is/,
+            /`receiver_account_missing` \([^)]*open one/,
+            /`mint_gone` \([^)]*create a new plan/,
+            /`mesub`: [^.]*nothing for the merchant to fix/,
+        ]) {
+            expect(output('check_access')).toMatch(fix);
+        }
+        // The merchant's routes serve no block: these tools name none.
+        for (const name of ['list_subscriptions', 'get_subscription', 'retry_charge']) {
+            expect(output(name), name).not.toMatch(/blocked_/);
+        }
+
         // A row of the list is enough to know when a retry is allowed.
         expect(description('retry_charge')).not.toMatch(/with `get_subscription` first/);
         expect(description('retry_charge')).toMatch(

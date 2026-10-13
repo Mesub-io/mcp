@@ -75,6 +75,14 @@ export const ACCESS_STATUSES = [
     'none',
 ] as const;
 export const PAYMENT_STATUSES = ['paid', 'late', 'none'] as const;
+/** Why charges are blocked: the first four are the merchant's own setup, `mesub` is ours. */
+export const BLOCKED_REASONS = [
+    'puller_not_allowed',
+    'receiver_not_allowed',
+    'receiver_account_missing',
+    'mint_gone',
+    'mesub',
+] as const;
 export const UPCOMING_KINDS = ['charge', 'retry', 'ends'] as const;
 export const DELIVERY_STATUSES = ['PENDING', 'DELIVERED', 'FAILED'] as const;
 export const EVENT_GROUPS = ['all', 'payments', 'subscribers', 'account'] as const;
@@ -387,6 +395,12 @@ const accessAnswerSchema = z.object({
     end_reason: code().nullable(),
     late_reason: code().nullable(),
     payment_status: code(),
+    // Set while charges are blocked for a cause that is not the subscriber's.
+    // Absent from an API older than the block: null then.
+    blocked_since: date.nullish().transform((value) => value ?? null),
+    blocked_reason: code()
+        .nullish()
+        .transform((value) => value ?? null),
     subscribed_since: date.nullable(),
     first_subscribed_at: date.nullable(),
     current_period_end: date.nullable(),
