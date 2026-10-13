@@ -3,7 +3,7 @@ import * as z from 'zod';
 import { SUBSCRIPTION_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, known, plural } from '../text.js';
 import { idInput } from './inputs.js';
-import { subscriptionOut, subscriptionOutput } from './shapes.js';
+import { blockInWords, subscriptionOut, subscriptionOutput } from './shapes.js';
 import { defineTool } from './tool.js';
 
 export const retryCharge = defineTool({
@@ -44,7 +44,8 @@ export const retryCharge = defineTool({
             text:
                 'The charge was queued for a new try: it is not settled yet. The subscription ' +
                 `is ${known(subscription.status, SUBSCRIPTION_STATUSES)}, with ` +
-                `${plural(subscription.failed_pulls, 'failed charge')} on the current period. ` +
+                `${plural(subscription.failed_pulls, 'failed charge')} on the current period.` +
+                `${blockInWords(subscription)} ` +
                 `Read it again with get_subscription for the outcome. ${DATA_NOTICE}`,
         };
     },

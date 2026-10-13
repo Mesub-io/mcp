@@ -520,6 +520,163 @@ describe('the project tools, in detail', () => {
             expect(codeOf(result)).toBe('unexpected');
         });
 
+        describe('a subscription whose charges are blocked', () => {
+            const id = { subscription_id: SUBSCRIPTION_ID };
+            /** The three tools that serve a subscription, each with what the API answers. */
+            const served: [string, number, (row: Data) => unknown, (data: Data) => Data][] = [
+                [
+                    'list_subscriptions',
+                    200,
+                    (row) => ({ ...answers.subscriptionPage, rows: [row] }),
+                    (data) => data.subscriptions[0],
+                ],
+                [
+                    'get_subscription',
+                    200,
+                    (row) => ({ ...answers.subscription, ...row }),
+                    (data) => data.subscription,
+                ],
+                [
+                    'retry_charge',
+                    202,
+                    (row) => ({ ...answers.subscription, ...row }),
+                    (data) => data.subscription,
+                ],
+            ];
+            const ask = (tool: string) => call(tool, tool === 'list_subscriptions' ? {} : id);
+
+            it.each(served)('%s says since when and why, the status as it was', async (...on) => {
+                const [tool, status, body, read] = on;
+                api.answer(status, body(answers.blockedRow));
+                const result = await ask(tool);
+
+                expect(result.isError).toBeFalsy();
+                expect(read(result.structuredContent as Data)).toMatchObject({
+                    status: 'ACTIVE',
+                    late_reason: null,
+                    has_access: true,
+                    access_until: answers.blockedRow.accessUntil,
+                    blocked_since: answers.blockedRow.blockedSince,
+                    blocked_reason: 'puller_not_allowed',
+                });
+                expect(read(result.structuredContent as Data)).not.toHaveProperty('blockedSince');
+            });
+
+            it('says it in the sentence of each, as check_access does', async () => {
+                api.answer(200, answers.blockedSubscription);
+                expect(sentence(await call('get_subscription', id))).toMatch(
+                    /^The subscription is ACTIVE, with 0 failed charges on the current period\. Its charges are blocked \(puller_not_allowed\), not by the subscriber: see `blocked_reason`\. 2 charges returned\./,
+                );
+
+                api.answer(202, answers.blockedSubscription);
+                expect(sentence(await call('retry_charge', id))).toMatch(
+                    /The subscription is ACTIVE, with 0 failed charges on the current period\. Its charges are blocked \(puller_not_allowed\), not by the subscriber: see `blocked_reason`\. Read it again with get_subscription/,
+                );
+
+                api.answer(200, {
+                    ...answers.subscriptionPage,
+                    rows: [answers.blockedRow, answers.row, answers.blockedRow],
+                });
+                expect(sentence(await call('list_subscriptions'))).toMatch(
+                    /In the project: 2 late, 1 stopped\. On this page: 2 with charges blocked, not by the subscriber: see `blocked_reason`\. /,
+                );
+            });
+
+            it.each([
+                'puller_not_allowed',
+                'receiver_not_allowed',
+                'receiver_account_missing',
+                'mint_gone',
+                'mesub',
+            ])('returns the blocked reason %s as the API serves it', async (blockedReason) => {
+                for (const [tool, status, body, read] of served) {
+                    api.answer(status, body({ ...answers.blockedRow, blockedReason }));
+                    const result = await ask(tool);
+
+                    expect(read(result.structuredContent as Data).blocked_reason, tool).toBe(
+                        blockedReason,
+                    );
+                    if (tool !== 'list_subscriptions') {
+                        expect(sentence(result), tool).toContain(
+                            `Its charges are blocked (${blockedReason})`,
+                        );
+                    }
+                }
+            });
+
+            it('returns no block, and says none, for a subscription that has none', async () => {
+                for (const [tool, status, body, read] of served) {
+                    api.answer(status, body(answers.row));
+                    const result = await ask(tool);
+
+                    expect(read(result.structuredContent as Data), tool).toMatchObject({
+                        blocked_since: null,
+                        blocked_reason: null,
+                    });
+                    expect(sentence(result), tool).not.toMatch(/blocked/);
+                }
+            });
+
+            it('returns both null from an older API that serves no block', async () => {
+                const { blockedSince: _since, blockedReason: _reason, ...before } = answers.row;
+                expect(before).not.toHaveProperty('blockedSince');
+
+                for (const [tool, status, body, read] of served) {
+                    const { blockedSince: _s, blockedReason: _r, ...whole } = body(before) as Data;
+                    expect(JSON.stringify(whole), tool).not.toContain('blocked');
+                    api.answer(status, whole);
+                    const result = await ask(tool);
+
+                    expect(result.isError, tool).toBeFalsy();
+                    expect(read(result.structuredContent as Data), tool).toMatchObject({
+                        blocked_since: null,
+                        blocked_reason: null,
+                    });
+                    expect(sentence(result), tool).not.toMatch(/blocked/);
+                }
+            });
+
+            it('keeps a reason added since in its field, and out of the sentence', async () => {
+                for (const [tool, status, body, read] of served) {
+                    api.answer(
+                        status,
+                        body({ ...answers.blockedRow, blockedReason: 'brand_new_cause' }),
+                    );
+                    const added = await ask(tool);
+                    expect(read(added.structuredContent as Data).blocked_reason, tool).toBe(
+                        'brand_new_cause',
+                    );
+                    expect(sentence(added), tool).not.toContain('brand_new_cause');
+                    if (tool !== 'list_subscriptions') {
+                        expect(sentence(added), tool).toContain(
+                            'Its charges are blocked (UNKNOWN)',
+                        );
+                    }
+
+                    api.answer(
+                        status,
+                        body({ ...answers.blockedRow, blockedReason: `x ${POISON}` }),
+                    );
+                    const odd = await ask(tool);
+                    expect(read(odd.structuredContent as Data).blocked_reason, tool).toBe(
+                        'UNKNOWN',
+                    );
+                    // The row's plan name carries it, as a text field may: the sentence never.
+                    expect(sentence(odd), tool).not.toContain(POISON);
+                }
+            });
+
+            it('refuses a block whose date is not a text', async () => {
+                for (const [tool, status, body] of served) {
+                    api.answer(status, body({ ...answers.blockedRow, blockedSince: 1760000000 }));
+                    const result = await ask(tool);
+
+                    expect(result.isError, tool).toBe(true);
+                    expect(codeOf(result), tool).toBe('unexpected');
+                }
+            });
+        });
+
         it('lists the days that had anything, then one day in full', async () => {
             api.answer(200, answers.eventDays);
             const days = await call('list_events', { days: 90, page: 3 });

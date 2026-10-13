@@ -325,6 +325,11 @@ const subscriptionRowSchema = z.object({
     lateReason: code().nullable(),
     hasAccess: z.boolean(),
     accessUntil: date.nullable(),
+    // As `/agent/access` says a block. Absent from an API older than it: null then.
+    blockedSince: date.nullish().transform((value) => value ?? null),
+    blockedReason: code()
+        .nullish()
+        .transform((value) => value ?? null),
     cancelledAt: date.nullable(),
     parkedAt: date.nullable(),
     dueAt: date.nullable(),

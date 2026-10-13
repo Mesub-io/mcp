@@ -193,6 +193,8 @@ export const row = {
     retryAvailableAt: T,
     retryDeadline: null,
     retryClosesAt: null,
+    blockedSince: null,
+    blockedReason: null,
     lastPaidAt: T,
     confirmedAt: T,
     amount: '9990000',
@@ -234,6 +236,20 @@ export const subscription = {
     ],
     supersededBy: null,
 };
+
+/** A row paid up, with charges blocked by the plan's own setup. */
+export const blockedRow = {
+    ...row,
+    status: 'ACTIVE',
+    lateReason: null,
+    failedPulls: 0,
+    retryAvailableAt: null,
+    dueAt: LATER,
+    accessUntil: LATER,
+    blockedSince: T,
+    blockedReason: 'puller_not_allowed',
+};
+export const blockedSubscription = { ...subscription, ...blockedRow };
 
 export const accessAnswer = {
     wallet: WALLET,

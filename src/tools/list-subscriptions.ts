@@ -21,7 +21,9 @@ export const listSubscriptions = defineTool({
         '(`status: "late"`), those Mesub stopped charging (`"stopped"`), those who ' +
         'cancelled, or the new ones, and to look a subscriber up by part of their wallet. ' +
         'It also returns how many subscriptions are in each of those groups and what they ' +
-        'bring a month. For one subscription with every charge it ran use ' +
+        'bring a month. A row with `blocked_since` set has its charges blocked by the ' +
+        "plan's setup or by Mesub, not by a late subscriber: `blocked_reason` says what " +
+        'to fix. For one subscription with every charge it ran use ' +
         '`get_subscription`. To ask whether one customer has access use `check_access`. ' +
         'Changes nothing.',
     inputSchema: z.strictObject({
@@ -94,6 +96,7 @@ export const listSubscriptions = defineTool({
             signal,
         );
         const more = found.page * found.limit < found.total;
+        const blocked = found.rows.filter((row) => row.blockedSince !== null).length;
 
         return {
             data: {
@@ -113,7 +116,8 @@ export const listSubscriptions = defineTool({
             text:
                 `${found.rows.length} of ${plural(found.total, 'subscription')}, page ${found.page}. ` +
                 (more ? `More exist: call again with page ${found.page + 1}.` : 'No more pages.') +
-                ` In the project: ${found.counts.late} late, ${found.counts.stopped} stopped. ` +
+                ` In the project: ${found.counts.late} late, ${found.counts.stopped} stopped.` +
+                `${blocked === 0 ? '' : ` On this page: ${blocked} with charges blocked, not by the subscriber: see \`blocked_reason\`.`} ` +
                 DATA_NOTICE,
         };
     },

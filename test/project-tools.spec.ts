@@ -199,9 +199,23 @@ describe.each([
         ]) {
             expect(output('check_access')).toMatch(fix);
         }
-        // The merchant's routes serve no block: these tools name none.
+        // A subscription says its block wherever it is served, in the words of check_access.
         for (const name of ['list_subscriptions', 'get_subscription', 'retry_charge']) {
-            expect(output(name), name).not.toMatch(/blocked_/);
+            expect(output(name), name).toMatch(/does not change `status`, the subscriber/);
+            expect(output(name), name).toMatch(/Mesub keeps trying \(`due_at`\)/);
+            expect(output(name), name).not.toMatch(/payment_status|next_charge_at/);
+            for (const fix of [
+                /`puller_not_allowed` \([^)]*add it back/,
+                /`receiver_not_allowed` \([^)]*choose one that is/,
+                /`receiver_account_missing` \([^)]*open one/,
+                /`mint_gone` \([^)]*create a new plan/,
+                /`mesub`: [^.]*nothing for the merchant to fix/,
+            ]) {
+                expect(output(name), name).toMatch(fix);
+            }
+        }
+        for (const name of ['list_subscriptions', 'get_subscription']) {
+            expect(description(name), name).toMatch(/`blocked_since`[^.]*not by a late subscriber/);
         }
 
         // A row of the list is enough to know when a retry is allowed.
