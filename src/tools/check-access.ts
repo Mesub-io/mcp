@@ -1,9 +1,9 @@
 import * as z from 'zod';
 
-import { ACCESS_STATUSES, BLOCKED_REASONS, PAYMENT_STATUSES } from '../mesub/schemas.js';
+import { ACCESS_STATUSES, PAYMENT_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, known, plural } from '../text.js';
 import { capped, MAX_LIST_ITEMS } from './limits.js';
-import { reason, reasonLabel } from './shapes.js';
+import { blockedReason, blockedSince, blockInWords, reason, reasonLabel } from './shapes.js';
 import { defineTool } from './tool.js';
 
 const answerOutput = z.object({
@@ -15,32 +15,11 @@ const answerOutput = z.object({
     end_reason: z.string().nullable(),
     late_reason: z.string().nullable(),
     payment_status: z.string().describe('`paid`, `late` or `none`.'),
-    blocked_since: z
-        .string()
-        .nullable()
-        .describe(
-            'Since when every charge of this subscription is blocked for a cause that is not ' +
-                "the subscriber's. Null: none is. A block does not change `status` nor " +
-                '`payment_status`, the subscriber is never late for it and has nothing to ' +
-                'sign: Mesub keeps trying (`next_charge_at`, or `next_retry_at`). What it ' +
-                'ends is access, on `access_until`, unless a charge goes through first.',
-        ),
-    blocked_reason: z
-        .string()
-        .nullable()
-        .describe(
-            "Whose cause the block is, null with `blocked_since`. Four are the plan's own " +
-                'setup, for the merchant to fix: `puller_not_allowed` (Mesub was taken off ' +
-                "the plan's pullers on chain: add it back with the wallet that owns the " +
-                "plan), `receiver_not_allowed` (the receiving wallet is not in the plan's " +
-                'destinations: choose one that is), `receiver_account_missing` (the ' +
-                "receiving wallet has no token account for the plan's token: open one), " +
-                '`mint_gone` (the token no longer exists: create a new plan with another ' +
-                'token). Access then lasts only the retry period the plan gives a late ' +
-                "payment. `mesub`: a cause on Mesub's side, nothing for the merchant to " +
-                'fix, and access lasts to the end of the period after the one paid for. Any ' +
-                'other value is one Mesub added since: report it as it is.',
-        ),
+    blocked_since: blockedSince(
+        '`status` nor `payment_status`',
+        '`next_charge_at`, or `next_retry_at`',
+    ),
+    blocked_reason: blockedReason,
     subscribed_since: z.string().nullable(),
     first_subscribed_at: z.string().nullable(),
     current_period_end: z.string().nullable(),
@@ -76,13 +55,6 @@ const answerOutput = z.object({
         .describe('The last five charges, only when asked for. Their amounts are raw.'),
     revalidate_after: z.number().describe('Seconds this answer stays good for.'),
 });
-
-/** What a sentence says of a block, empty when there is none. */
-function blockInWords(answer: { blocked_since: string | null; blocked_reason: string | null }) {
-    if (answer.blocked_since === null) return '';
-    const reason = known(answer.blocked_reason ?? '', BLOCKED_REASONS);
-    return ` Its charges are blocked (${reason}), not by the subscriber: see \`blocked_reason\`.`;
-}
 
 const BASE58_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const PLAN_SLUG = /^(?=.*[a-z])[a-z0-9]+(?:-[a-z0-9]+)*$/;

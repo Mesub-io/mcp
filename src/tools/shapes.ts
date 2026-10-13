@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
 import {
+    BLOCKED_REASONS,
     PLAN_STATUSES,
     PULL_OUTCOMES,
     SUBSCRIPTION_STATUSES,
@@ -15,6 +16,7 @@ import {
     type WebhookDelivery,
     type WebhookEndpoint,
 } from '../mesub/schemas.js';
+import { known } from '../text.js';
 import { capped, MAX_ATTEMPTS, MAX_EARLIER, MAX_EARLIER_ATTEMPTS } from './limits.js';
 import { displayAmount, type AmountUnit } from './money.js';
 import { periodInWords } from './period.js';
@@ -42,6 +44,49 @@ export const symbol = z
     .string()
     .nullable()
     .describe('What the mint is called, such as USDC. Null for a token Mesub does not vouch for.');
+/**
+ * Since when charges are blocked, wherever a subscription is served. `unchanged`
+ * and `tries` name the fields of that answer the block leaves alone and dates.
+ */
+export const blockedSince = (unchanged: string, tries: string) =>
+    z
+        .string()
+        .nullable()
+        .describe(
+            'Since when every charge of this subscription is blocked for a cause that is not ' +
+                `the subscriber's. Null: none is. A block does not change ${unchanged}, the ` +
+                'subscriber is never late for it and has nothing to sign: Mesub keeps trying ' +
+                `(${tries}). What it ends is access, on \`access_until\`, unless a charge ` +
+                'goes through first.',
+        );
+/** Whose cause it is, and what the merchant fixes. */
+export const blockedReason = z
+    .string()
+    .nullable()
+    .describe(
+        "Whose cause the block is, null with `blocked_since`. Four are the plan's own " +
+            'setup, for the merchant to fix: `puller_not_allowed` (Mesub was taken off ' +
+            "the plan's pullers on chain: add it back with the wallet that owns the " +
+            "plan), `receiver_not_allowed` (the receiving wallet is not in the plan's " +
+            'destinations: choose one that is), `receiver_account_missing` (the ' +
+            "receiving wallet has no token account for the plan's token: open one), " +
+            '`mint_gone` (the token no longer exists: create a new plan with another ' +
+            'token). Access then lasts only the retry period the plan gives a late ' +
+            "payment. `mesub`: a cause on Mesub's side, nothing for the merchant to " +
+            'fix, and access lasts to the end of the period after the one paid for. Any ' +
+            'other value is one Mesub added since: report it as it is.',
+    );
+
+/** What a sentence says of a block, empty when there is none. */
+export function blockInWords(answer: {
+    blocked_since: string | null;
+    blocked_reason: string | null;
+}): string {
+    if (answer.blocked_since === null) return '';
+    const cause = known(answer.blocked_reason ?? '', BLOCKED_REASONS);
+    return ` Its charges are blocked (${cause}), not by the subscriber: see \`blocked_reason\`.`;
+}
+
 /** Why a charge failed, as the API codes it. */
 export const reason = z
     .string()
@@ -189,7 +234,11 @@ export const subscriptionRowOutput = z.object({
     end_reason: z.string().nullable().describe('On ENDED only.'),
     late_reason: z.string().nullable().describe('On UNPAID only: why the last charge failed.'),
     has_access: z.boolean().describe('What `check_access` would answer now.'),
-    access_until: nullableDate,
+    access_until: nullableDate.describe(
+        'When access ends unless a charge renews it. Null while `has_access` is false.',
+    ),
+    blocked_since: blockedSince('`status`', '`due_at`'),
+    blocked_reason: blockedReason,
     cancelled_at: nullableDate,
     parked_at: nullableDate.describe("Set while the seat is over the tier's cap: not charged."),
     due_at: nullableDate.describe('The next charge, or the next retry when late.'),
