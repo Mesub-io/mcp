@@ -5,7 +5,7 @@ import { DATA_NOTICE, plural } from '../text.js';
 import { planFilter } from './inputs.js';
 import { capped, MAX_LIST_ITEMS, MAX_NESTED_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
-import { reason, reasonLabel, state, symbol } from './shapes.js';
+import { reason, reasonLabel, state, symbol, token } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -105,6 +105,7 @@ export const getOverview = defineTool({
                             .string()
                             .describe('As a person reads it. Quote this one.'),
                         mint: z.string(),
+                        token,
                         symbol,
                         decimals: z.number().nullable(),
                         amount_usd: z.string().nullable(),
