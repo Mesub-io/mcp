@@ -426,6 +426,100 @@ describe('the project tools, in detail', () => {
             );
         });
 
+        it('says since when and why charges are blocked, the status as it was', async () => {
+            api.answer(200, answers.blockedAccessAnswer);
+            const one = await call('check_access', { wallet: WALLET, plan: 'pro' });
+
+            expect((one.structuredContent as Data).plans[0]).toMatchObject({
+                access: true,
+                status: 'active',
+                payment_status: 'paid',
+                blocked_since: answers.blockedAccessAnswer.blocked_since,
+                blocked_reason: 'puller_not_allowed',
+                access_until: answers.blockedAccessAnswer.access_until,
+            });
+            expect(sentence(one)).toMatch(
+                /^Access is granted on that plan: status active, payment paid\. Its charges are blocked \(puller_not_allowed\), not by the subscriber: see `blocked_reason`\./,
+            );
+        });
+
+        it.each([
+            'puller_not_allowed',
+            'receiver_not_allowed',
+            'receiver_account_missing',
+            'mint_gone',
+            'mesub',
+        ])('returns the blocked reason %s as the API serves it', async (blocked_reason) => {
+            api.answer(200, { ...answers.blockedAccessAnswer, blocked_reason });
+            const one = await call('check_access', { wallet: WALLET, plan: 'pro' });
+            expect((one.structuredContent as Data).plans[0].blocked_reason).toBe(blocked_reason);
+            expect(sentence(one)).toContain(`Its charges are blocked (${blocked_reason})`);
+
+            api.answer(200, {
+                plans: [{ ...answers.blockedAccessAnswer, blocked_reason }, answers.accessAnswer],
+                revalidate_after: 60,
+            });
+            const all = await call('check_access', { wallet: WALLET });
+            expect(
+                (all.structuredContent as Data).plans.map((plan: Data) => plan.blocked_reason),
+            ).toEqual([blocked_reason, null]);
+            expect(sentence(all)).toMatch(
+                /^The customer has 2 plans, 2 with access, 1 with charges blocked\./,
+            );
+        });
+
+        it('returns no block, and says none, for a subscription that has none', async () => {
+            api.answer(200, answers.accessAnswer);
+            const one = await call('check_access', { wallet: WALLET, plan: 'pro' });
+            expect((one.structuredContent as Data).plans[0]).toMatchObject({
+                blocked_since: null,
+                blocked_reason: null,
+            });
+            expect(sentence(one)).not.toMatch(/blocked/);
+
+            api.answer(200, answers.accessList);
+            const all = await call('check_access', { wallet: WALLET });
+            expect(sentence(all)).toMatch(/^The customer has 1 plan, 1 with access\. /);
+        });
+
+        it('returns both null from an older API that serves no block', async () => {
+            const {
+                blocked_since: _since,
+                blocked_reason: _reason,
+                ...before
+            } = answers.accessAnswer;
+            expect(before).not.toHaveProperty('blocked_since');
+
+            api.answer(200, before);
+            const one = await data('check_access', { wallet: WALLET, plan: 'pro' });
+            expect(one.plans[0]).toMatchObject({ blocked_since: null, blocked_reason: null });
+
+            api.answer(200, { plans: [before], revalidate_after: 60 });
+            const all = await data('check_access', { wallet: WALLET });
+            expect(all.plans[0]).toMatchObject({ blocked_since: null, blocked_reason: null });
+        });
+
+        it('keeps a reason added since in its field, and out of the sentence', async () => {
+            api.answer(200, { ...answers.blockedAccessAnswer, blocked_reason: 'brand_new_cause' });
+            const added = await call('check_access', { wallet: WALLET, plan: 'pro' });
+            expect((added.structuredContent as Data).plans[0].blocked_reason).toBe(
+                'brand_new_cause',
+            );
+            expect(sentence(added)).toContain('Its charges are blocked (UNKNOWN)');
+
+            api.answer(200, { ...answers.blockedAccessAnswer, blocked_reason: `x ${POISON}` });
+            const odd = await call('check_access', { wallet: WALLET, plan: 'pro' });
+            expect((odd.structuredContent as Data).plans[0].blocked_reason).toBe('UNKNOWN');
+            expect(text(odd)).not.toContain(POISON);
+        });
+
+        it('refuses a block whose date is not a text', async () => {
+            api.answer(200, { ...answers.blockedAccessAnswer, blocked_since: 1760000000 });
+            const result = await call('check_access', { wallet: WALLET, plan: 'pro' });
+            expect(result.isError).toBe(true);
+            expect(codeOf(result)).toBe('unexpected');
+        });
+
         it('lists the days that had anything, then one day in full', async () => {
             api.answer(200, answers.eventDays);
             const days = await call('list_events', { days: 90, page: 3 });

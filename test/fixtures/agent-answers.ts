@@ -244,6 +244,8 @@ export const accessAnswer = {
     end_reason: null,
     late_reason: 'insufficient_balance',
     payment_status: 'late',
+    blocked_since: null,
+    blocked_reason: null,
     subscribed_since: T,
     first_subscribed_at: T,
     current_period_end: LATER,
@@ -253,6 +255,17 @@ export const accessAnswer = {
     next_retry_at: LATER,
     retry_deadline: null,
     revalidate_after: 60,
+};
+/** The same customer, paid up, with charges blocked by the plan's own setup. */
+export const blockedAccessAnswer = {
+    ...accessAnswer,
+    status: 'active',
+    late_reason: null,
+    payment_status: 'paid',
+    blocked_since: T,
+    blocked_reason: 'puller_not_allowed',
+    next_charge_at: LATER,
+    next_retry_at: null,
 };
 export const accessList = {
     plans: [
