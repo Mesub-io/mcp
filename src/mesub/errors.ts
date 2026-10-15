@@ -4,8 +4,12 @@ export interface MesubApiErrorOptions {
     retryable: boolean;
     retryAfterSeconds?: number | null;
     walletUrl?: string | null;
+    requestId?: string | null;
     cause?: unknown;
 }
+
+/** What Mesub names a request by: `req_` and 24 letters or digits. */
+export const REQUEST_ID = /^req_[0-9A-Za-z]{24}$/;
 
 /**
  * Every failure of a call to the Mesub API. `code` is the one Mesub's error
@@ -25,6 +29,8 @@ export class MesubApiError extends Error {
     readonly retryAfterSeconds: number | null;
     /** Where a merchant connects a wallet, when a refusal names it: an address of the dashboard, checked. */
     readonly walletUrl: string | null;
+    /** The id Mesub gave the request, to quote to Mesub support. Null when none came back. */
+    readonly requestId: string | null;
 
     constructor(message: string, options: MesubApiErrorOptions) {
         super(message, options.cause === undefined ? undefined : { cause: options.cause });
@@ -33,6 +39,7 @@ export class MesubApiError extends Error {
         this.retryable = options.retryable;
         this.retryAfterSeconds = options.retryAfterSeconds ?? null;
         this.walletUrl = options.walletUrl ?? null;
+        this.requestId = options.requestId ?? null;
     }
 }
 

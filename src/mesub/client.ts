@@ -2,7 +2,7 @@ import type * as z from 'zod';
 
 import { revealSecret, type Secret } from '../secret.js';
 import { VERSION } from '../version.js';
-import { MesubApiError, codeForStatus } from './errors.js';
+import { MesubApiError, REQUEST_ID, codeForStatus } from './errors.js';
 import { isLink } from './link.js';
 import {
     agentAccessListSchema,
@@ -656,7 +656,11 @@ export class MesubClient {
      */
     #errorFrom(response: Response, body: unknown): MesubApiError {
         const { status } = response;
-        const { code, retryable, walletUrl } = isRecord(body) ? body : {};
+        const { code, retryable, walletUrl, request_id } = isRecord(body) ? body : {};
+        // From the body, or the header when a proxy answered in its place. Kept only in its own shape.
+        const requestId = [request_id, response.headers.get('mesub-request-id')].find(
+            (value): value is string => typeof value === 'string' && REQUEST_ID.test(value),
+        );
 
         // Scrubbed whole, then cut: a cut must not leave half a credential behind.
         const message = this.#scrub(messageFrom(body, status)).slice(0, MAX_MESSAGE_LENGTH);
@@ -674,6 +678,7 @@ export class MesubClient {
             retryAfterSeconds: retryAfter(response.headers.get('retry-after')),
             // Kept only as an address of the dashboard: never a text to relay.
             walletUrl: isLink(walletUrl) ? walletUrl : null,
+            requestId: requestId ?? null,
         });
     }
 }

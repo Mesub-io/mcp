@@ -41,6 +41,8 @@ interface Refused {
     retryAfterSeconds: number | null;
     /** Where a merchant connects a wallet: an address of the dashboard, checked by the client. */
     walletUrl?: string | null;
+    /** The id Mesub gave the request (`Mesub-Request-Id`), checked to be one. */
+    requestId?: string | null;
 }
 
 /** What only the merchant can do about a plan that was not prepared, and what the agent can. */
@@ -159,12 +161,16 @@ function ended(message: string): string {
 
 function refused(error: Refused, tool: string): CallToolResult {
     const advice = adviceFor(error, tool);
+    // Checked to be `req_` and 24 letters or digits: never a text to relay.
+    const support = error.requestId
+        ? ` Mesub request id ${error.requestId}: quote it to Mesub support if the merchant asks them about this call.`
+        : '';
     return {
         isError: true,
         content: [
             {
                 type: 'text',
-                text: `Mesub error ${error.code}: ${ended(error.message)}${advice === '' ? '' : ` ${advice}`}`,
+                text: `Mesub error ${error.code}: ${ended(error.message)}${advice === '' ? '' : ` ${advice}`}${support}`,
             },
         ],
         _meta: { [ERROR_META_KEY]: error },
@@ -187,7 +193,7 @@ export function failure(error: unknown, tool: string, logger: Logger): CallToolR
     }
 
     if (error instanceof MesubApiError) {
-        const { code, message, status, retryable, retryAfterSeconds, walletUrl } = error;
+        const { code, message, status, retryable, retryAfterSeconds, walletUrl, requestId } = error;
 
         if (code === 'invalid_service_credentials') {
             // OUR fault, and nothing the caller can do about it: never said to them.
@@ -195,6 +201,7 @@ export function failure(error: unknown, tool: string, logger: Logger): CallToolR
                 tool,
                 code,
                 status,
+                requestId,
                 hint: 'MESUB_SERVICE_SECRET is not the one the Mesub API holds.',
             });
             return refused(
@@ -209,7 +216,7 @@ export function failure(error: unknown, tool: string, logger: Logger): CallToolR
             );
         }
 
-        logger.info('tool call refused by Mesub', { tool, code, status });
+        logger.info('tool call refused by Mesub', { tool, code, status, requestId });
         return refused(
             {
                 code,
@@ -217,6 +224,7 @@ export function failure(error: unknown, tool: string, logger: Logger): CallToolR
                 status,
                 retryable,
                 retryAfterSeconds,
+                ...(requestId !== null && { requestId }),
                 // Only where it is acted on: no other refusal carries an address.
                 ...(code === 'wallet_required' && { walletUrl }),
             },
