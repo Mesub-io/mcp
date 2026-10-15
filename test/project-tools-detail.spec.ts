@@ -347,7 +347,7 @@ describe('the project tools, in detail', () => {
             expect(plan.outcomes).toEqual({ PAID: 40, REJECTED: 2 });
             expect(plan.failures).toEqual([
                 {
-                    reason: `insufficient-balance ${POISON}`,
+                    reason: `insufficient_balance ${POISON}`,
                     reason_label: REASON_LABEL,
                     count: 2,
                 },
@@ -389,7 +389,7 @@ describe('the project tools, in detail', () => {
                 'REJECTED',
                 'PAID',
             ]);
-            expect(subscription.attempts[0].reason).toBe(`insufficient-balance ${POISON}`);
+            expect(subscription.attempts[0].reason).toBe(`insufficient_balance ${POISON}`);
             expect(sentence(result)).toMatch(
                 /^The subscription is UNPAID, with 1 failed charge on the current period\. 2 charges returned\./,
             );
@@ -680,6 +680,107 @@ describe('the project tools, in detail', () => {
             });
         });
 
+        describe('why a subscription stopped or ended, and whether it closes', () => {
+            it('returns the stop, the end and the close of a row as the API serves them', async () => {
+                api.answer(200, {
+                    ...answers.subscriptionPage,
+                    rows: [answers.stoppedRow, answers.cancelledRow, answers.closedElsewhereRow],
+                });
+                const page = await data('list_subscriptions');
+                expect(page.subscriptions[0]).toMatchObject({
+                    status: 'STOPPED',
+                    stop_reason: 'AUTHORITY_CLOSED',
+                    closable: true,
+                    closable_from: null,
+                });
+                expect(page.subscriptions[1]).toMatchObject({
+                    status: 'CANCELLED',
+                    stop_reason: null,
+                    closable: false,
+                    closable_from: answers.cancelledRow.closableFrom,
+                });
+                expect(page.subscriptions[2]).toMatchObject({
+                    status: 'ENDED',
+                    end_reason: 'CLOSED_ELSEWHERE',
+                    closable: false,
+                });
+
+                api.answer(200, { ...answers.subscription, ...answers.stoppedRow });
+                const one = await data('get_subscription', { subscription_id: SUBSCRIPTION_ID });
+                expect(one.subscription).toMatchObject({
+                    stop_reason: 'AUTHORITY_CLOSED',
+                    closable: true,
+                });
+            });
+
+            it('returns the subscription, the stop and the close of an access answer', async () => {
+                api.answer(200, answers.stoppedAccessAnswer);
+                const one = await data('check_access', { wallet: WALLET, plan: 'pro' });
+                expect(one.plans[0]).toMatchObject({
+                    subscription_id: SUBSCRIPTION_ID,
+                    access: false,
+                    status: 'stopped',
+                    stop_reason: 'authority_closed',
+                    closable: true,
+                    closable_from: null,
+                });
+
+                api.answer(200, { ...answers.accessAnswer, status: 'none', subscription_id: null });
+                const none = await data('check_access', { wallet: WALLET, plan: 'pro' });
+                expect(none.plans[0].subscription_id).toBeNull();
+            });
+
+            it('says nothing of a close from an older API that serves none of it', async () => {
+                const {
+                    stopReason: _stop,
+                    closable: _closable,
+                    closableFrom: _from,
+                    ...before
+                } = answers.stoppedRow;
+                api.answer(200, { ...answers.subscriptionPage, rows: [before] });
+                const page = await data('list_subscriptions');
+                expect(page.subscriptions[0]).toMatchObject({
+                    stop_reason: null,
+                    closable: false,
+                    closable_from: null,
+                });
+
+                const {
+                    subscription_id: _id,
+                    stop_reason: _reason,
+                    closable: _can,
+                    closable_from: _when,
+                    ...access
+                } = answers.stoppedAccessAnswer;
+                api.answer(200, access);
+                const one = await data('check_access', { wallet: WALLET, plan: 'pro' });
+                expect(one.plans[0]).toMatchObject({
+                    subscription_id: null,
+                    stop_reason: null,
+                    closable: false,
+                    closable_from: null,
+                });
+            });
+
+            it('keeps a stop reason added since as it is, and one that is not a word as UNKNOWN', async () => {
+                api.answer(200, { ...answers.stoppedAccessAnswer, stop_reason: 'brand_new_stop' });
+                const added = await data('check_access', { wallet: WALLET, plan: 'pro' });
+                expect(added.plans[0].stop_reason).toBe('brand_new_stop');
+
+                api.answer(200, { ...answers.stoppedAccessAnswer, stop_reason: `x ${POISON}` });
+                const odd = await call('check_access', { wallet: WALLET, plan: 'pro' });
+                expect((odd.structuredContent as Data).plans[0].stop_reason).toBe('UNKNOWN');
+                expect(text(odd)).not.toContain(POISON);
+            });
+
+            it('refuses a close that is not a yes or a no', async () => {
+                api.answer(200, { ...answers.stoppedAccessAnswer, closable: 'yes' });
+                const result = await call('check_access', { wallet: WALLET, plan: 'pro' });
+                expect(result.isError).toBe(true);
+                expect(codeOf(result)).toBe('unexpected');
+            });
+        });
+
         it('lists the days that had anything, then one day in full', async () => {
             api.answer(200, answers.eventDays);
             const days = await call('list_events', { days: 90, page: 3 });
@@ -809,7 +910,7 @@ describe('the project tools, in detail', () => {
             const one = await call('get_subscription', { subscription_id: SUBSCRIPTION_ID });
             const { subscription } = one.structuredContent as Data;
             expect(subscription.attempts[0]).toMatchObject({
-                reason: `insufficient-balance ${POISON}`,
+                reason: `insufficient_balance ${POISON}`,
                 reason_label: REASON_LABEL,
             });
             expect(subscription.attempts[1]).toMatchObject({ reason: null, reason_label: null });
@@ -828,14 +929,14 @@ describe('the project tools, in detail', () => {
             api.answer(200, answers.overview);
             const overview = await call('get_overview');
             expect((overview.structuredContent as Data).collection.causes[0]).toMatchObject({
-                reason: `insufficient-balance ${POISON}`,
+                reason: `insufficient_balance ${POISON}`,
                 reason_label: REASON_LABEL,
             });
 
             api.answer(200, answers.accessList);
             const access = await call('check_access', { wallet: WALLET, attempts: true });
             expect((access.structuredContent as Data).plans[0].attempts[0]).toMatchObject({
-                reason: `insufficient-balance ${POISON}`,
+                reason: `insufficient_balance ${POISON}`,
                 reason_label: REASON_LABEL,
                 amount: '9990000',
             });
@@ -851,14 +952,14 @@ describe('the project tools, in detail', () => {
                 subscription_id: SUBSCRIPTION_ID,
             });
             expect(subscription.attempts[0]).toMatchObject({
-                reason: `insufficient-balance ${POISON}`,
+                reason: `insufficient_balance ${POISON}`,
                 reason_label: null,
             });
 
             api.answer(200, older(answers.planDetail));
             const plan = await data('get_plan', { plan_id: PLAN_ID });
             expect(plan.failures).toEqual([
-                { reason: `insufficient-balance ${POISON}`, reason_label: null, count: 2 },
+                { reason: `insufficient_balance ${POISON}`, reason_label: null, count: 2 },
             ]);
             expect(plan.attempts[0].reason_label).toBeNull();
 
@@ -869,7 +970,7 @@ describe('the project tools, in detail', () => {
             api.answer(200, older(answers.accessList));
             const access = await data('check_access', { wallet: WALLET, attempts: true });
             expect(access.plans[0].attempts[0]).toMatchObject({
-                reason: `insufficient-balance ${POISON}`,
+                reason: `insufficient_balance ${POISON}`,
                 reason_label: null,
             });
         });

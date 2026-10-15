@@ -15,7 +15,11 @@ export const createWebhook = defineTool({
         "every subscriber of the project to that URL, with subscribers' identifiers in " +
         'them: create one only for a URL the merchant gave and owns. The URL must be ' +
         'https and its host must resolve publicly: a made-up or local address is refused ' +
-        'by Mesub. Nothing is posted to it now. The result holds the ' +
+        'by Mesub. Nothing is posted to it now. Each post is one event: `id` (the ' +
+        "event's, the same on every retry), `type`, `created_at`, `network`, " +
+        '`api_version`, `data` (the subscription right after the event) and `detail` ' +
+        '(what the event is about), signed the Standard Webhooks way; its `webhook-id` ' +
+        'header names the delivery. The result holds the ' +
         "endpoint's signing secret in clear, so it lands in this conversation: write it to " +
         'the environment of the receiving server, and never commit it, log it or repeat ' +
         'it. A project holds 16 endpoints, one per URL. To change an endpoint use ' +

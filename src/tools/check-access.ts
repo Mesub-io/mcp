@@ -3,17 +3,45 @@ import * as z from 'zod';
 import { ACCESS_STATUSES, PAYMENT_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, known, plural } from '../text.js';
 import { capped, MAX_LIST_ITEMS } from './limits.js';
-import { blockedReason, blockedSince, blockInWords, reason, reasonLabel } from './shapes.js';
+import {
+    blockedReason,
+    blockedSince,
+    blockInWords,
+    closable,
+    closableFrom,
+    endReason,
+    reason,
+    reasonLabel,
+    stopReason,
+} from './shapes.js';
 import { defineTool } from './tool.js';
 
 const answerOutput = z.object({
     wallet: z.string().nullable().describe('The wallet that pays. Null: nothing on this plan.'),
     plan: z.string().describe('The slug of the plan.'),
-    access: z.boolean().describe('Whether the customer may use the plan now.'),
+    subscription_id: z
+        .string()
+        .nullable()
+        .describe(
+            'The subscription this answer is about, for `get_subscription` or `retry_charge`. ' +
+                'Null: the customer has nothing on this plan.',
+        ),
+    access: z
+        .boolean()
+        .describe('Whether the customer may use the plan now: the only field a gate reads.'),
     status: z.string().describe('`none`: the customer has no subscription to the plan.'),
     paused: z.boolean(),
-    end_reason: z.string().nullable(),
-    late_reason: z.string().nullable(),
+    end_reason: endReason(),
+    late_reason: z
+        .string()
+        .nullable()
+        .describe(
+            'On `unpaid`, and on `stopped` for the payment it stopped on: why the last ' +
+                'charge failed. `insufficient_balance`, `approval_revoked` or `authority_closed`.',
+        ),
+    stop_reason: stopReason(),
+    closable,
+    closable_from: closableFrom,
     payment_status: z.string().describe('`paid`, `late` or `none`.'),
     blocked_since: blockedSince(
         '`status` nor `payment_status`',
@@ -70,7 +98,9 @@ export const checkAccess = defineTool({
         "merchant's own id for them, or their email. With a plan slug it answers for that " +
         'plan; without one, for every plan of the project the customer has. A customer ' +
         'with no subscription is a normal answer (`access: false`, status `none`), not an ' +
-        "error. An answer with `blocked_since` set is a charge blocked by the plan's setup " +
+        'error. Gate on `access` alone; `stop_reason` and `end_reason` say why it stopped or ' +
+        'ended, `closable` whether the subscriber can now close it on Solana to get its ' +
+        "deposit back. An answer with `blocked_since` set is a charge blocked by the plan's setup " +
         'or by Mesub, not a late subscriber: `blocked_reason` says what to fix. The amounts ' +
         'of the charges it returns are raw, in the smallest unit of the ' +
         "plan's token: the price to quote comes from `get_subscription` or `get_plan`. To " +

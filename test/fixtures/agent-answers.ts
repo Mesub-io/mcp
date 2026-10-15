@@ -156,7 +156,7 @@ export const plans = [
 export const attempt = {
     id: 'catt00000000000000000001',
     outcome: 'REJECTED',
-    reason: `insufficient-balance ${POISON}`,
+    reason: `insufficient_balance ${POISON}`,
     reasonLabel: REASON_LABEL,
     amount: '9990000',
     amountUsd: '9.99',
@@ -189,7 +189,7 @@ export const planDetail = {
     unpricedPaid: 0,
     outcomes: { PAID: 40, REJECTED: 2 },
     failures: [
-        { reason: `insufficient-balance ${POISON}`, reasonLabel: REASON_LABEL, count: 2 },
+        { reason: `insufficient_balance ${POISON}`, reasonLabel: REASON_LABEL, count: 2 },
     ],
     upcoming: [{ subscriber: WALLET, dueAt: LATER, failedPulls: 0, retries: 3 }],
     nextPull: { dueAt: LATER, amount: '9990000', manual: false },
@@ -207,6 +207,9 @@ export const row = {
     status: 'UNPAID',
     endReason: null,
     lateReason: 'INSUFFICIENT_BALANCE',
+    stopReason: null,
+    closable: false,
+    closableFrom: null,
     hasAccess: true,
     accessUntil: LATER,
     cancelledAt: null,
@@ -276,14 +279,52 @@ export const blockedRow = {
 };
 export const blockedSubscription = { ...subscription, ...blockedRow };
 
+/** Stopped for good: the wallet closed what lets Mesub charge it, and may close now. */
+export const stoppedRow = {
+    ...row,
+    status: 'STOPPED',
+    stopReason: 'AUTHORITY_CLOSED',
+    lateReason: 'AUTHORITY_CLOSED',
+    hasAccess: false,
+    accessUntil: null,
+    dueAt: null,
+    retryAvailableAt: null,
+    closable: true,
+    closableFrom: null,
+};
+/** Cancelled, and closable once its period ends. */
+export const cancelledRow = {
+    ...row,
+    status: 'CANCELLED',
+    lateReason: null,
+    cancelledAt: T,
+    closable: false,
+    closableFrom: LATER,
+};
+/** Ended: its subscription account was closed outside Mesub. */
+export const closedElsewhereRow = {
+    ...row,
+    status: 'ENDED',
+    endReason: 'CLOSED_ELSEWHERE',
+    lateReason: null,
+    hasAccess: false,
+    accessUntil: null,
+    dueAt: null,
+    retryAvailableAt: null,
+};
+
 export const accessAnswer = {
     wallet: WALLET,
     plan: 'pro',
+    subscription_id: SUBSCRIPTION_ID,
     access: true,
     status: 'unpaid',
     paused: false,
     end_reason: null,
     late_reason: 'insufficient_balance',
+    stop_reason: null,
+    closable: false,
+    closable_from: null,
     payment_status: 'late',
     blocked_since: null,
     blocked_reason: null,
@@ -308,6 +349,18 @@ export const blockedAccessAnswer = {
     next_charge_at: LATER,
     next_retry_at: null,
 };
+/** Stopped for good, and closable now. */
+export const stoppedAccessAnswer = {
+    ...accessAnswer,
+    access: false,
+    status: 'stopped',
+    late_reason: 'authority_closed',
+    stop_reason: 'authority_closed',
+    payment_status: 'none',
+    access_until: null,
+    next_retry_at: null,
+    closable: true,
+};
 export const accessList = {
     plans: [
         {
@@ -315,7 +368,7 @@ export const accessList = {
             attempts: [
                 {
                     outcome: 'rejected',
-                    reason: `insufficient-balance ${POISON}`,
+                    reason: `insufficient_balance ${POISON}`,
                     reason_label: REASON_LABEL,
                     amount: '9990000',
                     attempted_at: T,
@@ -352,7 +405,7 @@ export const eventLines = [
         token: USDC_TOKEN,
         symbol: 'USDC',
         decimals: 6,
-        reason: `insufficient-balance ${POISON}`,
+        reason: `insufficient_balance ${POISON}`,
         reasonLabel: REASON_LABEL,
         retry: false,
         signature: null,
@@ -496,7 +549,7 @@ export const overview = {
         stopped: 1,
         causes: [
             {
-                reason: `insufficient-balance ${POISON}`,
+                reason: `insufficient_balance ${POISON}`,
                 reasonLabel: REASON_LABEL,
                 owner: 'subscriber',
                 count: 2,

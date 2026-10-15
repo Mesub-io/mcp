@@ -23,7 +23,8 @@ export const listSubscriptions = defineTool({
         'It also returns how many subscriptions are in each of those groups and what they ' +
         'bring a month. A row with `blocked_since` set has its charges blocked by the ' +
         "plan's setup or by Mesub, not by a late subscriber: `blocked_reason` says what " +
-        'to fix. For one subscription with every charge it ran use ' +
+        'to fix. A stopped row says why in `stop_reason`. For one subscription with every ' +
+        'charge it ran use ' +
         '`get_subscription`. To ask whether one customer has access use `check_access`. ' +
         'Changes nothing.',
     inputSchema: z.strictObject({
