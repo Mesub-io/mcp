@@ -75,13 +75,29 @@ export const ACCESS_STATUSES = [
     'none',
 ] as const;
 export const PAYMENT_STATUSES = ['paid', 'late', 'none'] as const;
-/** Why charges are blocked: the first four are the merchant's own setup, `mesub` is ours. */
+/** Why charges are blocked: the first five are the merchant's own setup, `mesub` is ours. */
 export const BLOCKED_REASONS = [
     'puller_not_allowed',
     'receiver_not_allowed',
     'receiver_account_missing',
+    'receiver_account_frozen',
     'mint_gone',
     'mesub',
+] as const;
+/** Why a subscription ended, as `/v1/access` spells it. */
+export const END_REASONS = [
+    'cancelled',
+    'plan_removed',
+    'plan_replaced',
+    'plan_ended',
+    'closed_elsewhere',
+    'closed',
+] as const;
+/** Why Mesub stopped charging a subscription, as `/v1/access` spells it. */
+export const STOP_REASONS = [
+    'out_of_retries',
+    'retry_deadline_passed',
+    'authority_closed',
 ] as const;
 export const UPCOMING_KINDS = ['charge', 'retry', 'ends'] as const;
 export const DELIVERY_STATUSES = ['PENDING', 'DELIVERED', 'FAILED'] as const;
@@ -350,10 +366,22 @@ const subscriptionRowSchema = z.object({
     planId: id,
     planName: text(MAX_NAME_LENGTH).nullable(),
     status: subscriptionStatus,
-    // CANCELLED, PLAN_REMOVED, PLAN_REPLACED, PLAN_ENDED, AUTHORITY_CLOSED or CLOSED.
+    // CANCELLED, PLAN_REMOVED, PLAN_REPLACED, PLAN_ENDED, CLOSED_ELSEWHERE or CLOSED.
     endReason: code().nullable(),
     // INSUFFICIENT_BALANCE, APPROVAL_REVOKED or AUTHORITY_CLOSED.
     lateReason: code().nullable(),
+    // On STOPPED: OUT_OF_RETRIES, RETRY_DEADLINE_PASSED or AUTHORITY_CLOSED.
+    // Absent from an API older than it: null then.
+    stopReason: code()
+        .nullish()
+        .transform((value) => value ?? null),
+    // Whether the subscriber can close it on Solana now, or from when. Absent
+    // from an API older than them: false and null then, which say nothing.
+    closable: z
+        .boolean()
+        .nullish()
+        .transform((value) => value ?? false),
+    closableFrom: date.nullish().transform((value) => value ?? null),
     hasAccess: z.boolean(),
     accessUntil: date.nullable(),
     // As `/agent/access` says a block. Absent from an API older than it: null then.
@@ -426,11 +454,22 @@ export type AgentSubscription = z.infer<typeof agentSubscriptionSchema>;
 const accessAnswerSchema = z.object({
     wallet: plain.nullable(),
     plan: plain,
+    // The subscription the answer is about. Absent from an API older than it: null then.
+    subscription_id: id.nullish().transform((value) => value ?? null),
     access: z.boolean(),
     status: code(),
     paused: z.boolean(),
     end_reason: code().nullable(),
     late_reason: code().nullable(),
+    // Absent from an API older than these three: null, false and null then.
+    stop_reason: code()
+        .nullish()
+        .transform((value) => value ?? null),
+    closable: z
+        .boolean()
+        .nullish()
+        .transform((value) => value ?? false),
+    closable_from: date.nullish().transform((value) => value ?? null),
     payment_status: code(),
     // Set while charges are blocked for a cause that is not the subscriber's.
     // Absent from an API older than the block: null then.

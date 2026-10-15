@@ -16,7 +16,9 @@ export const getSubscription = defineTool({
         'or lost access, or for the price to quote and the failures to name before ' +
         '`retry_charge`. With `blocked_since` set, its charges are blocked by the ' +
         "plan's setup or by Mesub, not by a late subscriber: `blocked_reason` says what " +
-        'to fix. Take the id from `list_subscriptions`. It reads the ' +
+        'to fix. A stopped one says why in `stop_reason`, an ended one in `end_reason`, and ' +
+        '`closable` says whether its subscriber can close it now. Take the id from ' +
+        '`list_subscriptions` or `check_access`. It reads the ' +
         "merchant's side: it cannot cancel, resume or change a subscription, which only " +
         'the subscriber can. Every amount comes with a display value: quote that one. ' +
         'Changes nothing.',

@@ -2,7 +2,9 @@ import * as z from 'zod';
 
 import {
     BLOCKED_REASONS,
+    END_REASONS,
     PLAN_STATUSES,
+    STOP_REASONS,
     PULL_OUTCOMES,
     SUBSCRIPTION_STATUSES,
     TIERS,
@@ -106,12 +108,14 @@ export const blockedReason = z
     .string()
     .nullable()
     .describe(
-        "Whose cause the block is, null with `blocked_since`. Four are the plan's own " +
+        "Whose cause the block is, null with `blocked_since`. Five are the plan's own " +
             'setup, for the merchant to fix: `puller_not_allowed` (Mesub was taken off ' +
             "the plan's pullers on chain: add it back with the wallet that owns the " +
             "plan), `receiver_not_allowed` (the receiving wallet is not in the plan's " +
             'destinations: choose one that is), `receiver_account_missing` (the ' +
             "receiving wallet has no token account for the plan's token: open one), " +
+            "`receiver_account_frozen` (the receiving wallet's token account is frozen by " +
+            "the token's issuer: choose another wallet), " +
             '`mint_gone` (the token no longer exists: create a new plan with another ' +
             'token). Access then lasts only the retry period the plan gives a late ' +
             "payment. `mesub`: a cause on Mesub's side, nothing for the merchant to " +
@@ -133,8 +137,61 @@ export function blockInWords(answer: {
 export const reason = z
     .string()
     .describe(
-        'Why the charge failed, as a short code such as `program:4`: data. `reason_label` is ' +
-            'the one to show a person.',
+        'Why the charge failed, as a short code in snake case such as `insufficient_balance` ' +
+            'or `program_4`: data. `reason_label` is the one to show a person.',
+    );
+
+/** Why a subscription ended; `upper` for the routes that spell it in capitals. */
+export const endReason = (upper = false) =>
+    z
+        .string()
+        .nullable()
+        .describe(
+            `Why it ended, on ${upper ? 'ENDED' : '`ended`'} only: one of ` +
+                `${(upper ? END_REASONS.map((value) => value.toUpperCase()) : END_REASONS).join(', ')}. ` +
+                `${upper ? 'CLOSED_ELSEWHERE' : '`closed_elsewhere`'}: the subscription account ` +
+                'was closed on Solana outside Mesub. Null on every other status, and on an old ' +
+                'one with no reason recorded. Any other value is one Mesub added since: report ' +
+                'it as it is.',
+        );
+
+/** Why Mesub stopped charging it; `upper` as above. */
+export const stopReason = (upper = false) => {
+    const word = (value: string) => (upper ? value.toUpperCase() : value);
+    return z
+        .string()
+        .nullable()
+        .describe(
+            `Why Mesub stopped charging it, on ${word('stopped')} only. ` +
+                `${word(STOP_REASONS[0])}: every retry of the missed payment failed; the ` +
+                'subscription stays open on Solana, and the subscriber can come back, or cancel ' +
+                `it and close it once the period ends. ${word(STOP_REASONS[1])}: on the Free ` +
+                `tier, the last day to pay the missed payment passed. ${word(STOP_REASONS[2])}: ` +
+                'the wallet closed for good the account that lets Mesub charge it; nobody can ' +
+                'charge it again, and the subscriber cannot come back on it, only close it. ' +
+                'Null on every other status, and on one stopped before Mesub recorded why. Any ' +
+                'other value is one Mesub added since: report it as it is.',
+        );
+};
+
+/** Whether the subscriber can close it on Solana now. */
+export const closable = z
+    .boolean()
+    .describe(
+        'Whether the subscriber can close the subscription on Solana now, which gives its ' +
+            'deposit back to their wallet: a cancellation whose end passed, one that ended ' +
+            'with its plan, or one stopped for `authority_closed`. Only the subscriber can ' +
+            'close it, from their wallet: no tool here does. As Mesub last read the chain.',
+    );
+
+/** From when, if not now. */
+export const closableFrom = z
+    .string()
+    .nullable()
+    .describe(
+        'When the subscriber can close it, if not now: the end of the period a cancellation ' +
+            'set. Null when `closable` is true, and when no date is known yet: a running ' +
+            'subscription, or one stopped for `out_of_retries`, must be cancelled first.',
     );
 /** The same in words: Mesub's own, bounded, and data like the rest. */
 export const reasonLabel = z
@@ -277,8 +334,17 @@ export const subscriptionRowOutput = z.object({
     plan_id: z.string(),
     plan_name: text.nullable(),
     status: state(SUBSCRIPTION_STATUSES),
-    end_reason: z.string().nullable().describe('On ENDED only.'),
-    late_reason: z.string().nullable().describe('On UNPAID only: why the last charge failed.'),
+    end_reason: endReason(true),
+    late_reason: z
+        .string()
+        .nullable()
+        .describe(
+            'On UNPAID, and on STOPPED for the payment it stopped on: why the last charge ' +
+                'failed. INSUFFICIENT_BALANCE, APPROVAL_REVOKED or AUTHORITY_CLOSED.',
+        ),
+    stop_reason: stopReason(true),
+    closable,
+    closable_from: closableFrom,
     has_access: z.boolean().describe('What `check_access` would answer now.'),
     access_until: nullableDate.describe(
         'When access ends unless a charge renews it. Null while `has_access` is false.',
@@ -401,8 +467,19 @@ export function webhookOut(endpoint: WebhookEndpoint): z.input<typeof webhookOut
 }
 
 export const deliveryOutput = z.object({
-    id: z.string(),
-    event_id: z.string().nullable().describe('Null on a test.'),
+    id: z
+        .string()
+        .describe(
+            'The delivery, as its `webhook-id` header says it: one per event and endpoint, ' +
+                'the same on every retry. What the receiving server deduplicates on.',
+        ),
+    event_id: z
+        .string()
+        .nullable()
+        .describe(
+            'The event delivered, as the `id` of the body posted says it: the same in every ' +
+                'delivery of it, to every endpoint. Null on a test.',
+        ),
     type: z.string().describe('The event delivered, or `test`.'),
     test: z.boolean(),
     status: state(DELIVERY_STATUSES),
