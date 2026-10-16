@@ -1992,7 +1992,7 @@ describe('the project tools, in detail', () => {
                 403,
                 refusal(
                     403,
-                    'forbidden',
+                    'retries_not_on_tier',
                     'This project is on the FREE tier, which does not retry.',
                 ),
             );
@@ -2004,8 +2004,9 @@ describe('the project tools, in detail', () => {
             });
 
             expect(text(result)).toBe(
-                'Mesub error forbidden: This project is on the FREE tier, which does not retry. ' +
-                    'Not allowed for this project as it stands: the same call gives the same answer.',
+                'Mesub error retries_not_on_tier: This project is on the FREE tier, which does not retry. ' +
+                    "Nothing was changed. The project's tier takes no retry policy: only the merchant " +
+                    'can move the project up, in the dashboard, and no tool here does it.',
             );
         });
 

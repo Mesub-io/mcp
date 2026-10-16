@@ -164,6 +164,12 @@ export function adviceFor(refusal: Refused, tool?: string): string {
     if (prepare !== undefined) return prepare;
     const retry = tool === 'retry_charge' ? retryAdvice(refusal) : undefined;
     if (retry !== undefined) return retry;
+    if (tool === 'update_retry_policy' && code === 'retries_not_on_tier') {
+        return (
+            "Nothing was changed. The project's tier takes no retry policy: only the merchant " +
+            'can move the project up, in the dashboard, and no tool here does it.'
+        );
+    }
 
     if (status === 404) {
         return 'Nothing of this project has that id or slug: take it from the tool that lists them.';
