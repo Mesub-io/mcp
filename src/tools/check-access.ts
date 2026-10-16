@@ -93,17 +93,17 @@ export const checkAccess = defineTool({
     description:
         'Ask whether one customer may use a plan right now, and why: the same answer the ' +
         "merchant's own server gets from Mesub when it gates a feature. Use it when the " +
-        'merchant asks "does this customer have access", "why was this user locked out", or ' +
-        'wants to test their gating. Name the customer by exactly one of their wallet, the ' +
-        "merchant's own id for them, or their email. With a plan slug it answers for that " +
-        'plan; without one, for every plan of the project the customer has. A customer ' +
-        'with no subscription is a normal answer (`access: false`, status `none`), not an ' +
-        'error. Gate on `access` alone; `stop_reason` and `end_reason` say why it stopped or ' +
-        'ended, `closable` whether the subscriber can now close it on Solana to get its ' +
-        "deposit back. An answer with `blocked_since` set is a charge blocked by the plan's setup " +
-        'or by Mesub, not a late subscriber: `blocked_reason` says what to fix. The amounts ' +
-        'of the charges it returns are raw, in the smallest unit of the ' +
-        "plan's token: the price to quote comes from `get_subscription` or `get_plan`. To " +
+        'merchant asks "does this customer have access" or "why was this user locked out". ' +
+        "Name the customer by exactly one of their wallet, the merchant's own id for them, " +
+        'or their email. With a plan slug it answers for that plan; without one, for every ' +
+        'plan of the project the customer has. No subscription is a normal answer ' +
+        '(`access: false`, status `none`), not an error. Gate on `access` alone; ' +
+        '`stop_reason` and `end_reason` say why it stopped or ended, `closable` whether the ' +
+        'subscriber can now close it on Solana to get its deposit back. An answer with ' +
+        "`blocked_since` set is a charge blocked by the plan's setup or by Mesub, not a late " +
+        'subscriber: `blocked_reason` says what to fix. States are lower case here ' +
+        '(`unpaid`), upper case in the other tools (`UNPAID`). Charge amounts are raw, in ' +
+        "the token's smallest unit: quote prices from `get_subscription` or `get_plan`. To " +
         'browse subscribers use `list_subscriptions`. Changes nothing.',
     inputSchema: z
         .strictObject({

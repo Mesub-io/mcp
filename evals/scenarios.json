@@ -304,7 +304,7 @@
       "calls": ["retry_charge"],
       "never": ["update_retry_policy"],
       "ask_first": true,
-      "says": "Asks, calls once. On a refusal (Try again in N minutes) it reports it and stops: it never calls again by itself."
+      "says": "Asks, calls once. On a refusal it reports it and stops: it never calls again by itself. retry_too_soon names the wait; retry_cannot_succeed and insufficient_balance spent no retry and say nothing will go through until the subscriber acts."
     }
   },
   {
@@ -541,7 +541,7 @@
   {
     "id": "prepare-ceiling",
     "kind": "choose",
-    "prompt": "Prepare a Max plan at 50 USDC a month. (Mesub answers forbidden: a prepared plan holds a place and must be deleted in the dashboard.)",
+    "prompt": "Prepare a Max plan at 50 USDC a month. (Mesub answers plan_cap_reached: a prepared plan holds a place and must be deleted in the dashboard.)",
     "expect": {
       "calls": ["prepare_plan"],
       "never": ["update_project"],
