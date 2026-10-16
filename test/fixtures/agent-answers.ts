@@ -566,6 +566,7 @@ export const webhook = {
     enabled: true,
     secretHint: 'whsec_....LaSw',
     secretRotatedAt: null,
+    previousSecretExpiresAt: null,
     failingSince: null,
     disabledAt: null,
     disabledError: null,

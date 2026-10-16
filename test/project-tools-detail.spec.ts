@@ -1012,6 +1012,7 @@ describe('the project tools, in detail', () => {
                 enabled: true,
                 secret_hint: 'whsec_....LaSw',
                 secret_rotated_at: null,
+                previous_secret_expires_at: null,
                 failing_since: null,
                 disabled_at: null,
                 disabled_error: null,
@@ -1047,6 +1048,58 @@ describe('the project tools, in detail', () => {
                 expect((result.structuredContent as Data).secret, tool).toBe(SECRET_VALUE);
                 expect(sentence(result), tool).not.toContain(SECRET_VALUE);
                 expect(sentence(result), tool).toMatch(/never commit it/);
+            }
+        });
+
+        it('rotates with no overlap unless one is asked for, and says so', async () => {
+            api.answer(201, answers.webhookWithSecret);
+            const cut = await call('regenerate_webhook_secret', { webhook_id: WEBHOOK_ID });
+            expect(api.projectCalls()[0]?.body).toBeUndefined();
+            expect(sentence(cut)).toMatch(
+                /^A new signing secret was drawn and the old one no longer works\./,
+            );
+            expect((cut.structuredContent as Data).webhook.previous_secret_expires_at).toBeNull();
+
+            api.calls.length = 0;
+            api.answer(201, {
+                ...answers.webhookWithSecret,
+                previousSecretExpiresAt: '2026-10-02T12:00:00.000Z',
+            });
+            const kept = await call('regenerate_webhook_secret', {
+                webhook_id: WEBHOOK_ID,
+                overlap_hours: 24,
+            });
+            expect(api.projectCalls()[0]?.body).toEqual({ overlapHours: 24 });
+            expect((kept.structuredContent as Data).webhook.previous_secret_expires_at).toBe(
+                '2026-10-02T12:00:00.000Z',
+            );
+            expect(sentence(kept)).toMatch(
+                /old one still signs beside it until 2026-10-02T12:00:00\.000Z: every delivery until then carries both signatures/,
+            );
+            expect(sentence(kept)).not.toContain(SECRET_VALUE);
+
+            api.calls.length = 0;
+            api.answer(201, answers.webhookWithSecret);
+            await call('regenerate_webhook_secret', { webhook_id: WEBHOOK_ID, overlap_hours: 0 });
+            expect(api.projectCalls()[0]?.body).toEqual({ overlapHours: 0 });
+        });
+
+        it('never quotes an overlap end that is not a date', async () => {
+            api.answer(201, { ...answers.webhookWithSecret, previousSecretExpiresAt: POISON });
+            const result = await call('regenerate_webhook_secret', {
+                webhook_id: WEBHOOK_ID,
+                overlap_hours: 1,
+            });
+            expect(sentence(result)).toMatch(/until the end of the overlap/);
+            expect(sentence(result)).not.toContain(POISON);
+        });
+
+        it('refuses an overlap the API would refuse, before any call', async () => {
+            for (const bad of [-1, 25, 1.5, '2', null, true]) {
+                await refused('regenerate_webhook_secret', {
+                    webhook_id: WEBHOOK_ID,
+                    overlap_hours: bad,
+                });
             }
         });
 

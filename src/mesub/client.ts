@@ -470,13 +470,18 @@ export class MesubClient {
         });
     }
 
-    /** `POST /agent/webhooks/:endpointId/secret/regenerate`: the old secret stops at once. */
+    /**
+     * `POST /agent/webhooks/:endpointId/secret/regenerate`: the old secret keeps
+     * signing for `overlapHours`, 0 to 24. No body: 0, it stops at once.
+     */
     regenerateWebhookSecret(
         endpointId: string,
+        overlapHours: number | undefined,
         signal?: AbortSignal,
     ): Promise<WebhookEndpointWithSecret> {
         return this.#call('POST', `/agent/webhooks/${pathSegment(endpointId)}/secret/regenerate`, {
             as: 'agent',
+            body: overlapHours === undefined ? undefined : { overlapHours },
             schema: webhookEndpointWithSecretSchema,
             signal,
         });

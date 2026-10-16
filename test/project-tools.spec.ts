@@ -119,6 +119,8 @@ describe.each([
         expect(description('delete_webhook')).toMatch(/cannot be undone/);
         expect(description('delete_webhook')).toMatch(/Ask the merchant/);
         expect(description('regenerate_webhook_secret')).toMatch(/stops working at once/);
+        expect(description('regenerate_webhook_secret')).toMatch(/two signatures/);
+        expect(description('regenerate_webhook_secret')).not.toMatch(/no overlap/);
         expect(description('regenerate_webhook_secret')).toMatch(/Ask the merchant/);
         expect(description('update_webhook')).toMatch(/where subscribers' data is sent/);
         expect(description('update_webhook')).toMatch(/Ask the merchant/);
