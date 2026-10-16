@@ -48,7 +48,8 @@ export const getPlan = defineTool({
             .record(z.string(), z.number())
             .describe(
                 `How its charges ended (${PULL_OUTCOMES.join(', ')}). REJECTED: refused on the ` +
-                    'subscriber side. BLOCKED: on ours.',
+                    "subscriber side. BLOCKED: blocked by the plan's own setup, for the merchant " +
+                    "to fix, or on Mesub's side: `failures` gives the reason.",
             ),
         failures: z
             .array(z.object({ reason, reason_label: reasonLabel, count: z.number() }))
