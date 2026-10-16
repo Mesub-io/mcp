@@ -249,7 +249,7 @@ describe('DocsSearch, on the Mesub docs', () => {
         ['late payment retry', '/docs/lifecycle'],
         ['FakeMesub tier', '/docs/testing'],
         ['install @mesub/node', '/docs/quickstart'],
-        ['build @mesub/react from source', '/docs/quickstart'],
+        ['install @mesub/react', '/docs/quickstart'],
         // Typos.
         ['hasAcess', '/docs/access'],
         ['renewal_upcomming', '/reference/webhooks/subscription-renewal-upcoming'],
@@ -291,14 +291,13 @@ describe('DocsSearch, on the Mesub docs', () => {
         expect(code?.passage).toContain('mesub.webhooks.verify');
     });
 
-    it('installs @mesub/node from npm, and only @mesub/react from source', () => {
+    it.each(['@mesub/node', '@mesub/react'])('installs %s from npm, with no archive', (name) => {
         const hit = search
-            .search('npm install @mesub/node', TOP)
+            .search(`npm install ${name}`, TOP)
             .find((found) => found.url.startsWith(`${DOCS_BASE_URL}/docs/quickstart`));
-        expect(hit?.passage).toContain('npm install @mesub/node');
+        expect(hit?.passage).toContain(`npm install ${name}`);
         const text = DOCS_INDEX.sections.map((section) => section.text).join('\n');
-        expect(text).toContain('mesub-react-0.1.0.tgz');
-        expect(text).not.toContain('mesub-node-0.1.0.tgz');
+        expect(text).not.toMatch(/\.tgz\b/);
     });
 
     it('keeps every passage within its cap, whatever is asked', () => {
