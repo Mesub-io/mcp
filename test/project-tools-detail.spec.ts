@@ -783,7 +783,7 @@ describe('the project tools, in detail', () => {
 
         it('lists the days that had anything, then one day in full', async () => {
             api.answer(200, answers.eventDays);
-            const days = await call('list_events', { days: 90, page: 3 });
+            const days = await call('list_events', { days: 45, page: 3 });
             expect(days.structuredContent).toEqual({
                 days: [
                     { day: '2026-10-01', pulled_usd: '99.90', failed_usd: '9.99' },
@@ -795,8 +795,9 @@ describe('the project tools, in detail', () => {
                 events: null,
                 total: null,
                 truncated: false,
+                out_of_reach: false,
             });
-            expect(api.projectCalls()[0]?.query).toEqual({ days: '90', page: '3' });
+            expect(api.projectCalls()[0]?.query).toEqual({ days: '45', page: '3' });
             expect(sentence(days)).toMatch(/More exist: call again with page 2\./);
 
             api.calls.length = 0;
@@ -813,6 +814,36 @@ describe('the project tools, in detail', () => {
                 type: 'PLAN_RECEIVER_CHANGED',
                 detail: JSON.stringify(answers.eventLines[1]?.detail),
             });
+        });
+
+        it('names the keys of an access event in snake_case, as the webhooks do', async () => {
+            const detail = {
+                changedAt: '2026-10-01T10:00:00.000Z',
+                blockedReason: 'puller_not_allowed',
+                accessUntil: '2026-10-04T10:00:00.000Z',
+            };
+            api.answer(200, [
+                { ...answers.eventLines[1], type: 'SUBSCRIPTION_ACCESS_REVOKED', detail },
+            ]);
+
+            const { events } = await data('list_events', { day: '2026-10-01' });
+
+            expect(JSON.parse(events[0].detail)).toEqual({
+                changed_at: detail.changedAt,
+                blocked_reason: 'puller_not_allowed',
+                access_until: detail.accessUntil,
+            });
+        });
+
+        it('says a day older than the log keeps is out of reach, not empty', async () => {
+            api.answer(200, []);
+
+            const result = await call('list_events', { day: '2020-01-01' });
+
+            expect((result.structuredContent as Data).out_of_reach).toBe(true);
+            expect(sentence(result)).toMatch(
+                /older than the 45 days the log keeps: what happened then is out of reach, not nothing\./,
+            );
         });
 
         it('says which upcoming charges are at risk', async () => {
@@ -1663,6 +1694,8 @@ describe('the project tools, in detail', () => {
                 { group: 'money' },
                 { by: 'year' },
                 { days: 0 },
+                // Past what the log keeps: refused rather than answered empty.
+                { days: 46 },
                 { page: 0 },
                 // Neither applies to one day: refused rather than dropped.
                 { day: '2026-10-01', page: 2 },

@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
 import { clip } from '../text.js';
+import { snake } from '../tools/snake.js';
 import { isLink } from './link.js';
 
 // What the tools read from the Mesub API, one schema per answer. An answer is
@@ -544,13 +545,14 @@ export const agentEventLinesSchema = z.array(
         reasonLabel,
         retry: z.boolean(),
         signature: plain.nullable(),
-        // A small JSON object: kept as the text of its JSON, cut short.
+        // A small JSON object, stored in camelCase: kept as the text of its JSON
+        // in snake_case, as the webhooks name the same fields, cut short.
         detail: z
             .unknown()
             .transform((value) =>
                 value === null || value === undefined
                     ? null
-                    : clip(JSON.stringify(value), MAX_DETAIL_LENGTH),
+                    : clip(JSON.stringify(snake(value)), MAX_DETAIL_LENGTH),
             ),
     }),
 );
