@@ -285,6 +285,15 @@ describe('the project tools, in detail', () => {
     });
 
     describe('what a result is made of', () => {
+        it('reads no manage url from an API that serves none as null', async () => {
+            const { manageUrl: _manageUrl, ...older } = answers.servedProject;
+            api.answer(200, { ...answers.project, project: older });
+
+            const result = await data('get_project');
+
+            expect(result.project.manage_url).toBeNull();
+        });
+
         it('returns the project and its usage in snake_case, and no field the schema does not name', async () => {
             api.answer(200, answers.project);
 
@@ -303,6 +312,7 @@ describe('the project tools, in detail', () => {
                     },
                     plans: 2,
                     plan_cap: 5,
+                    manage_url: 'https://fraise.example/account',
                     created_at: '2026-10-01T12:00:00.000Z',
                     updated_at: '2026-10-01T12:00:00.000Z',
                 },

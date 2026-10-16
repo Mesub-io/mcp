@@ -235,6 +235,12 @@ const servedProjectSchema = z.object({
         .nullable(),
     plans: count,
     planCap: count.nullable(),
+    // Written by the merchant: an address to show, never fetched. Null on an older API.
+    manageUrl: z
+        .string()
+        .max(MAX_URL_LENGTH)
+        .nullish()
+        .transform((value) => value ?? null),
     createdAt: date,
     updatedAt: date,
 });
