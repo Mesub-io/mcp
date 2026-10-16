@@ -16,7 +16,7 @@ It is a thin layer over the Mesub HTTP API. A tool is one call to that API and a
 
 **Not hosted yet.** Mesub will host this server: there is nothing to install and nothing to run on the merchant's side. Until it is, no address works, and the one written below is a placeholder.
 
-What exists in this repository: the transport, authorization, the client for the Mesub API, and 23 tools. What it is tested against, on every push, is a stand-in for the Mesub API. The routes it calls and the consent page in the dashboard are being merged on the Mesub side.
+What exists in this repository: the transport, authorization, the client for the Mesub API, and 23 tools. What it is tested against, on every push, is a stand-in for the Mesub API.
 
 ## Connect
 
