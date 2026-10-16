@@ -681,6 +681,8 @@ export const webhookEndpointSchema = z.object({
     enabled: z.boolean(),
     secretHint: plain,
     secretRotatedAt: date.nullable(),
+    // Until when the secret before the last rotation still signs. Absent from an older API: null.
+    previousSecretExpiresAt: date.nullable().default(null),
     failingSince: date.nullable(),
     disabledAt: date.nullable(),
     disabledError: text(MAX_EXCERPT_LENGTH).nullable(),

@@ -453,6 +453,10 @@ export const webhookOutput = z.object({
         .string()
         .describe('The start and the end of the signing secret, never all of it.'),
     secret_rotated_at: nullableDate,
+    previous_secret_expires_at: nullableDate.describe(
+        'Until when the secret before the last rotation still signs beside the current one: ' +
+            'every delivery until then carries both signatures. Null when one secret signs.',
+    ),
     failing_since: nullableDate.describe('The first failed delivery since the last success.'),
     disabled_at: nullableDate.describe(
         'Set when Mesub turned it off after three days of failures.',
