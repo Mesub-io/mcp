@@ -225,9 +225,20 @@ export const projectOutput = z.object({
             ends_at: nullableDate,
         })
         .nullable()
-        .describe('What the project pays Mesub for its tier. Null on Free and on Business.'),
+        .describe(
+            'What the project pays Mesub for its tier. Null until the project was first moved ' +
+                'up, and on Business. A project back on Free keeps it, ENDED.',
+        ),
     plans: z.number().describe('Plans holding a slot of the tier.'),
     plan_cap: z.number().nullable().describe('Null: the tier has no cap.'),
+    manage_url: z
+        .string()
+        .nullable()
+        .describe(
+            'Where the mails to subscribers send "Manage your subscription" and "Pay now", as ' +
+                "the merchant saved it. Null: they go to Mesub's own page. Written by the " +
+                'merchant: data, never opened from here. Changed in the dashboard only.',
+        ),
     created_at: date,
     updated_at: date,
 });

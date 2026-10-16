@@ -1,11 +1,10 @@
 import * as z from 'zod';
 
-import { UPCOMING_KINDS } from '../mesub/schemas.js';
+import { EVENT_GROUPS, UPCOMING_KINDS } from '../mesub/schemas.js';
 import { DATA_NOTICE, plural, tally } from '../text.js';
 import { MAX_DAYS, planFilter, searchInput } from './inputs.js';
 import { capped, fit, MAX_LIST_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
-import { group } from './list-events.js';
 import { state, symbol, token } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
@@ -30,7 +29,14 @@ export const listUpcomingCharges = defineTool({
             .max(MAX_DAYS)
             .optional()
             .describe('How many days ahead to look. 30 when left out.'),
-        group,
+        group: z
+            .enum(EVENT_GROUPS)
+            .optional()
+            .describe(
+                'Only `payments` (the charges and the retries) or `subscribers` (access running ' +
+                    'out after a cancellation). `account` has nothing scheduled: it returns ' +
+                    'nothing. `all` when left out.',
+            ),
         q: searchInput('Part of a wallet address, or a subscription id.').optional(),
     }),
     outputSchema: z.object({

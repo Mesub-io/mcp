@@ -57,6 +57,7 @@ export const servedProject = {
     billing: { subscriptionId: 'csubbilling', status: 'ACTIVE', nextChargeAt: LATER, endsAt: null },
     plans: 2,
     planCap: 5,
+    manageUrl: 'https://fraise.example/account',
     createdAt: T,
     updatedAt: T,
     // Not a field this server knows: must reach no agent.

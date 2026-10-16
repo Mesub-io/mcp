@@ -9,6 +9,11 @@ import { attemptOut, attemptOutput, planOut, planOutput, reason, reasonLabel } f
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
+/** The states a plan counts its subscribers in: never a checkout unsigned, nor a row replaced. */
+const COUNTED_STATUSES = SUBSCRIPTION_STATUSES.filter(
+    (status) => !['PENDING', 'EXPIRED', 'SUPERSEDED'].includes(status),
+);
+
 export const getPlan = defineTool({
     name: 'get_plan',
     title: 'Read one plan',
@@ -28,8 +33,9 @@ export const getPlan = defineTool({
         subscribers_by_status: z
             .record(z.string(), z.number())
             .describe(
-                `How many subscriptions are in each state (${SUBSCRIPTION_STATUSES.join(', ')}). ` +
-                    'A state nobody is in is absent.',
+                `How many subscriptions are in each state (${COUNTED_STATUSES.join(', ')}). ` +
+                    'A cancellation past its end counts as ENDED. A state nobody is in is ' +
+                    'absent. Checkouts not signed and rows a comeback replaced are not counted.',
             ),
         monthly: z
             .string()
@@ -48,7 +54,8 @@ export const getPlan = defineTool({
             .record(z.string(), z.number())
             .describe(
                 `How its charges ended (${PULL_OUTCOMES.join(', ')}). REJECTED: refused on the ` +
-                    'subscriber side. BLOCKED: on ours.',
+                    "subscriber side. BLOCKED: blocked by the plan's own setup, for the merchant " +
+                    "to fix, or on Mesub's side: `failures` gives the reason.",
             ),
         failures: z
             .array(z.object({ reason, reason_label: reasonLabel, count: z.number() }))

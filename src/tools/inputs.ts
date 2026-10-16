@@ -27,5 +27,8 @@ export const searchInput = (what: string) =>
 
 export const MAX_DAYS = 3650;
 
+/** How many days back the event log reaches: Mesub keeps events 45 days, then purges them. */
+export const JOURNAL_DAYS = 45;
+
 export const daysInput = (what: string) =>
     z.number().int().min(1).max(MAX_DAYS).default(30).describe(what);

@@ -137,8 +137,12 @@ export const getOverview = defineTool({
                         reason,
                         reason_label: reasonLabel,
                         owner: state(
-                            ['subscriber', 'mesub'],
-                            "Whose side the failure is on: the subscriber's wallet, or Mesub.",
+                            ['subscriber', 'merchant', 'mesub'],
+                            'Whose side the failure is on. `subscriber`: refused on the ' +
+                                "subscriber's wallet, retried against them. `merchant`: blocked " +
+                                "by the plan's own setup (see `blocked_reason` on " +
+                                '`list_subscriptions`), for the merchant to fix. `mesub`: ' +
+                                "blocked on Mesub's side, nothing for the merchant to fix.",
                         ),
                         count: z.number(),
                         amount_usd: z.string(),

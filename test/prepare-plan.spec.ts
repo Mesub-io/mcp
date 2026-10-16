@@ -4,7 +4,7 @@ import type { Client } from '@modelcontextprotocol/client';
 
 import { DATA_NOTICE, quoted } from '../src/text.js';
 import { ERROR_META_KEY } from '../src/tools/result.js';
-import { TOKENS } from '../src/tools/tokens.js';
+import { forgetNetwork, TOKENS } from '../src/tools/tokens.js';
 import * as answers from './fixtures/agent-answers.js';
 import {
     NEXT_STEP,
@@ -88,6 +88,7 @@ describe('prepare_plan', () => {
         api.calls.length = 0;
         api.intercept();
         api.answer(201, answers.preparedPlan);
+        forgetNetwork();
     });
 
     const call = (args: Record<string, unknown>) =>
@@ -239,10 +240,16 @@ describe('prepare_plan', () => {
             for (const token of Object.values(TOKENS)) {
                 expect(token.decimals).toBe(6);
                 expect(token.mints.length).toBeGreaterThan(0);
-                for (const mint of token.mints)
+                for (const { mint } of token.mints)
                     expect(mint).toMatch(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
+                // The main network first, and one address per network.
+                expect(token.mints[0].network).toBe('mainnet');
+                const networks = token.mints.map((mint) => mint.network);
+                expect(new Set(networks).size).toBe(networks.length);
             }
-            const mints = Object.values(TOKENS).flatMap((token) => [...token.mints]);
+            const mints = Object.values(TOKENS).flatMap((token) =>
+                token.mints.map(({ mint }) => mint),
+            );
             expect(new Set(mints).size).toBe(mints.length);
         });
     });
@@ -859,8 +866,8 @@ describe('prepare_plan', () => {
             [
                 'end_date_too_soon',
                 'The plan must run one period at least before it ends.',
-                'Nothing was prepared. The end is less than one period of the plan away: ask ' +
-                    'the merchant for a later date, or whether the plan should have no end.',
+                'Nothing was prepared. The end is less than one period of the plan and five ' +
+                    'minutes away: ask the merchant for a later date, or whether the plan should have no end.',
             ],
             [
                 'end_date_too_far',
@@ -913,6 +920,53 @@ describe('prepare_plan', () => {
                     'the dashboard.',
             );
             expect(errorOf(result)).toMatchObject({ code: 'mint_not_allowed', status: 400 });
+        });
+
+        it('sends only the address of the network it learned, once one was taken', async () => {
+            const bodies = answerByMint((mint) =>
+                mint === TEST_USDC
+                    ? { status: 201, body: { ...answers.preparedPlan, mint: TEST_USDC } }
+                    : { status: 400, body: refusal(400, 'mint_not_allowed', NOT_ALLOWED) },
+            );
+
+            await call(PRO);
+            const again = await call(PRO);
+
+            expect(again.isError).toBeFalsy();
+            expect(bodies.map((body) => body.mint)).toEqual([USDC, TEST_USDC, TEST_USDC]);
+        });
+
+        it('refuses a token the test network lacks without a write, once it learned that network', async () => {
+            const bodies = answerByMint((mint) =>
+                mint === TEST_USDC
+                    ? { status: 201, body: { ...answers.preparedPlan, mint: TEST_USDC } }
+                    : { status: 400, body: refusal(400, 'mint_not_allowed', NOT_ALLOWED) },
+            );
+            await call(PRO);
+            bodies.length = 0;
+
+            const result = await call({ ...PRO, token: 'USDT' });
+
+            expect(bodies).toEqual([]);
+            expect(errorOf(result)?.code).toBe('mint_not_allowed');
+            expect(text(result)).toMatch(
+                /^Mesub error mint_not_allowed: This Mesub runs on a test network, where an agent prepares plans in USDC only\./,
+            );
+        });
+
+        it('forgets the network learned when none of its addresses is taken any more', async () => {
+            let takes = USDC;
+            const bodies = answerByMint((mint) =>
+                mint === takes
+                    ? { status: 201, body: { ...answers.preparedPlan, mint } }
+                    : { status: 400, body: refusal(400, 'mint_not_allowed', NOT_ALLOWED) },
+            );
+            await call(PRO);
+            takes = TEST_USDC;
+
+            expect((await call(PRO)).isError).toBe(true);
+            expect((await call(PRO)).isError).toBeFalsy();
+            expect(bodies.map((body) => body.mint)).toEqual([USDC, USDC, USDC, TEST_USDC]);
         });
 
         it('sends a token that has one address once', async () => {
