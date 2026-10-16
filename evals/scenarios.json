@@ -172,7 +172,7 @@
       "calls": ["list_upcoming_charges"],
       "never": ["retry_charge", "update_retry_policy", "list_events"],
       "ask_first": false,
-      "says": "Counts as going to fail a charge under a block (blocked_reason receiver_account_missing: the merchant opens the token account of the receiving wallet) and a retry whose late_reason is APPROVAL_REVOKED (the subscriber approves again from their wallet; topping up does nothing), beside any renewal_issue. Does not count a retry for INSUFFICIENT_BALANCE as sure to fail. Retries nothing."
+      "says": "Counts as going to fail a charge under a block (blocked_reason receiver_account_missing: the merchant opens the token account of the receiving wallet) and a retry whose late_reason is APPROVAL_REVOKED (topping up does nothing: the subscriber cancels and subscribes again), beside any renewal_issue. Does not count a retry for INSUFFICIENT_BALANCE as sure to fail. Retries nothing."
     }
   },
   {
