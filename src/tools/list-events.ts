@@ -11,7 +11,7 @@ import { defineTool } from './tool.js';
 
 export const MAX_EVENT_PAGE = 10_000;
 
-export const group = z
+const group = z
     .enum(EVENT_GROUPS)
     .optional()
     .describe(
