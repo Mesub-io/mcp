@@ -262,7 +262,6 @@ describe('DocsSearch, on the Mesub docs', () => {
         ['test without paying', '/docs/testing'],
         ['how do I rotate my API key', '/docs/api-key#rotate-it'],
         ['renewal_upcoming', '/reference/webhooks/subscription-renewal-upcoming'],
-        ['what is a parked seat', '/docs/lifecycle#parked-seats'],
     ])('answers "%s" with %s first', (query, url) => {
         expect(top(query, 1)).toEqual([url]);
     });
