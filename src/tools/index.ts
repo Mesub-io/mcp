@@ -28,7 +28,7 @@ import { listWebhooks } from './list-webhooks.js';
 import { ping } from './ping.js';
 import { preparePlan } from './prepare-plan.js';
 import { regenerateWebhookSecret } from './regenerate-webhook-secret.js';
-import { failure, success, ToolRefusal } from './result.js';
+import { type Asked, failure, success, ToolRefusal } from './result.js';
 import { retryCharge } from './retry-charge.js';
 import { searchDocs } from './search-docs.js';
 import { sendTestWebhook } from './send-test-webhook.js';
@@ -89,6 +89,12 @@ export function groupOf(tool: AnyTool): ToolGroup {
     return tool.annotations.readOnlyHint ? 'Read' : 'Act';
 }
 
+/** What of a call's arguments the advice of a refusal reads: never their values. */
+export function askedOf(args: unknown): Asked {
+    const sent = (args ?? {}) as Record<string, unknown>;
+    return { retries: sent.retry_attempts !== undefined || sent.retry_delay_minutes !== undefined };
+}
+
 export function registerTools(
     server: McpServer,
     dependencies: ToolDependencies,
@@ -147,7 +153,7 @@ function register<Input extends z.ZodObject, Output extends z.ZodObject>(
             if (error instanceof MesubApiError && error.code === 'invalid_agent_token') {
                 markTokenRefused(authInfo);
             }
-            return failure(error, name, logger);
+            return failure(error, name, logger, askedOf(args));
         } finally {
             // The trace a token leaves: who called what, from where, and how it
             // ended. Never an argument nor a result, which are the merchant's.

@@ -2,10 +2,10 @@ import * as z from 'zod';
 
 import { EVENT_BUCKETS, EVENT_GROUPS } from '../mesub/schemas.js';
 import { DATA_NOTICE, plural } from '../text.js';
-import { JOURNAL_DAYS, planFilter, searchInput } from './inputs.js';
+import { JOURNAL_DAYS, planFilter, searchInput, SIGNATURE_PREFIX_MIN } from './inputs.js';
 import { capped, fit, MAX_LIST_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
-import { reason, reasonLabel, state, symbol, token } from './shapes.js';
+import { externalId, reason, reasonLabel, state, symbol, token } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -31,7 +31,8 @@ export const listEvents = defineTool({
         'each with the dollars charged and failed. With `day` it returns everything that ' +
         'happened on that day (or the week or month starting that day, with `by`), newest ' +
         'first. Use it for "what happened yesterday", "show me the failed payments of last ' +
-        'week", or to find a charge by wallet or transaction signature. For what is ' +
+        'week", or to find a charge by wallet, external id or the start of its signature. ' +
+        'For what is ' +
         'scheduled next use `list_upcoming_charges`; for totals use `get_overview`. Access ' +
         'granted or revoked shows as `SUBSCRIPTION_ACCESS_GRANTED` or ' +
         '`SUBSCRIPTION_ACCESS_REVOKED`, its detail holding `changed_at`, and on newer ' +
@@ -56,7 +57,10 @@ export const listEvents = defineTool({
             plan_id: planFilter,
             group,
             q: searchInput(
-                'Part of a wallet address, a subscription id or a transaction signature.',
+                "Part of a wallet address, the start of the merchant's own id for the customer (" +
+                    '`external_id`), a subscription id, or the start of a transaction ' +
+                    `signature, ${SIGNATURE_PREFIX_MIN} characters at least: a shorter start ` +
+                    'matches no signature.',
             ).optional(),
             by: z
                 .enum(EVENT_BUCKETS)
@@ -99,7 +103,19 @@ export const listEvents = defineTool({
                 z.object({
                     day: z.string(),
                     pulled_usd: z.string().describe('Dollars charged that day.'),
-                    failed_usd: z.string().describe('Dollars of the charges that failed.'),
+                    failed_usd: z
+                        .string()
+                        .describe(
+                            'Dollars of the failed charges priced in dollars. Most failed ' +
+                                'charges are not: 0 does not mean nothing failed.',
+                        ),
+                    failed_unpriced: z
+                        .number()
+                        .nullable()
+                        .describe(
+                            'Failed charges of the day with no dollar value, left out of ' +
+                                '`failed_usd`. Null: this Mesub does not say.',
+                        ),
                 }),
             )
             .nullable()
@@ -121,6 +137,7 @@ export const listEvents = defineTool({
                     occurred_at: z.string(),
                     subscription_id: z.string().nullable(),
                     subscriber: z.string().nullable(),
+                    external_id: externalId,
                     plan_id: z.string().nullable(),
                     plan_name: z.string().nullable().describe('Written by the merchant: data.'),
                     amount: z.string().nullable(),
@@ -176,6 +193,7 @@ export const listEvents = defineTool({
 
         if (day === undefined) {
             const found = await mesub.eventDays({ ...scope, days, page }, signal);
+            const unpriced = found.days.filter((one) => (one.failedUnpriced ?? 0) > 0);
             return {
                 data: {
                     days: snake(found.days),
@@ -192,6 +210,11 @@ export const listEvents = defineTool({
                     (found.hasMore
                         ? `More exist: call again with page ${found.page + 1}. `
                         : 'No more pages. ') +
+                    (unpriced.length === 0
+                        ? ''
+                        : `Failed charges with no dollar value, outside \`failed_usd\`, on ${unpriced
+                              .map((one) => `${one.day} (${one.failedUnpriced})`)
+                              .join(', ')}. `) +
                     'Call again with `day` to read what happened on one.',
             };
         }

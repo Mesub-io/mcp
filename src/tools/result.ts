@@ -45,8 +45,14 @@ interface Refused {
     requestId?: string | null;
 }
 
+/** What a refused call asked, as far as the advice depends on it. */
+export interface Asked {
+    /** The call sent a retry policy (`prepare_plan`). */
+    retries?: boolean;
+}
+
 /** What only the merchant can do about a plan that was not prepared, and what the agent can. */
-function prepareAdvice({ code, status, walletUrl }: Refused): string | undefined {
+function prepareAdvice({ code, status, walletUrl }: Refused, asked: Asked): string | undefined {
     if (code === 'wallet_required') {
         // The address stands alone, so that nothing after it is read as part of it.
         const where = walletUrl ? `at ${walletUrl} ,` : 'in the settings of the Mesub dashboard,';
@@ -87,8 +93,12 @@ function prepareAdvice({ code, status, walletUrl }: Refused): string | undefined
     if (status === 403) {
         return (
             'Nothing was prepared. Relay that message to the merchant as it is: only they can ' +
-            'delete a plan or change the tier, in the dashboard, and no tool here does either. ' +
-            'If it is about retries, call again without `retry_attempts` and `retry_delay_minutes`.'
+            'delete a plan or change the tier, in the dashboard, and no tool here does either.' +
+            // Only a call that sent retries can have been refused for them.
+            (asked.retries
+                ? ' If it is about retries, call again without `retry_attempts` and ' +
+                  '`retry_delay_minutes`.'
+                : '')
         );
     }
     return undefined;
@@ -105,13 +115,17 @@ const PREPARED_ALREADY =
  * correct the request, look the id up, connect again, hand the merchant what
  * only they can do, or stop.
  */
-export function adviceFor(refusal: Refused, tool?: string): string {
+export function adviceFor(refusal: Refused, tool?: string, asked: Asked = {}): string {
     const { code, status, retryable, retryAfterSeconds } = refusal;
     const seconds = retryAfterSeconds === null ? null : `${retryAfterSeconds} seconds`;
     const preparing = tool === 'prepare_plan';
 
     if (status === 429) {
-        return `Too many calls on this connection: wait ${seconds ?? 'a minute'}, then call again.`;
+        const wait = `wait ${seconds ?? 'a minute'}, then call again.`;
+        return tool === 'send_test_webhook'
+            ? `Mesub sends at most ${TEST_DELIVERIES_A_MINUTE} test deliveries a minute on one ` +
+                  `connection: ${wait}`
+            : `Too many calls on this connection: ${wait}`;
     }
     if (code === 'invalid_agent_token') {
         return 'The connection to Mesub expired or was revoked: connect again, then repeat the call.';
@@ -129,7 +143,7 @@ export function adviceFor(refusal: Refused, tool?: string): string {
             `calling again.${preparing ? PREPARED_ALREADY : ''}`
         );
     }
-    const prepare = preparing ? prepareAdvice(refusal) : undefined;
+    const prepare = preparing ? prepareAdvice(refusal, asked) : undefined;
     if (prepare !== undefined) return prepare;
 
     if (status === 404) {
@@ -154,14 +168,39 @@ export function adviceFor(refusal: Refused, tool?: string): string {
     return '';
 }
 
+/** Test deliveries the Mesub API sends for one connection in a minute. */
+export const TEST_DELIVERIES_A_MINUTE = 5;
+
+/** The fields of the API a message may name, as the tools name them. */
+const TOOL_FIELDS: Record<string, string> = {
+    endsAt: 'ends_at',
+    periodHours: 'period_hours',
+    retryAttempts: 'retry_attempts',
+    retryDelayMinutes: 'retry_delay_minutes',
+    websiteUrl: 'website_url',
+};
+
+/**
+ * A message of the API in the words of the tools: a field by the name the
+ * agent sends it under, and no framework's name for a refusal.
+ */
+export function inToolWords(message: string): string {
+    return message
+        .replace(/^ThrottlerException:\s*Too Many Requests\.?$/i, 'Too many requests.')
+        .replace(
+            /\b(endsAt|periodHours|retryAttempts|retryDelayMinutes|websiteUrl)\b/g,
+            (field) => TOOL_FIELDS[field] ?? field,
+        );
+}
+
 /** A message of the API, ended: one that stops without punctuation would run into the advice. */
 function ended(message: string): string {
     const said = message.trimEnd();
     return said === '' || /[.!?]["')\]]?$/.test(said) ? said : `${said}.`;
 }
 
-function refused(error: Refused, tool: string): CallToolResult {
-    const advice = adviceFor(error, tool);
+function refused(error: Refused, tool: string, asked: Asked = {}): CallToolResult {
+    const advice = adviceFor(error, tool, asked);
     // Checked to be `req_` and 24 letters or digits: never a text to relay.
     const support = error.requestId
         ? ` Mesub request id ${error.requestId}: quote it to Mesub support if the merchant asks them about this call.`
@@ -171,7 +210,7 @@ function refused(error: Refused, tool: string): CallToolResult {
         content: [
             {
                 type: 'text',
-                text: `Mesub error ${error.code}: ${ended(error.message)}${advice === '' ? '' : ` ${advice}`}${support}`,
+                text: `Mesub error ${error.code}: ${ended(inToolWords(error.message))}${advice === '' ? '' : ` ${advice}`}${support}`,
             },
         ],
         _meta: { [ERROR_META_KEY]: error },
@@ -184,7 +223,12 @@ function refused(error: Refused, tool: string): CallToolResult {
  * trace, a header, a URL or the token: anything that is not a Mesub error is
  * logged here and answered with one fixed sentence.
  */
-export function failure(error: unknown, tool: string, logger: Logger): CallToolResult {
+export function failure(
+    error: unknown,
+    tool: string,
+    logger: Logger,
+    asked: Asked = {},
+): CallToolResult {
     if (error instanceof ToolRefusal) {
         const { code, message } = error;
         return refused(
@@ -230,6 +274,7 @@ export function failure(error: unknown, tool: string, logger: Logger): CallToolR
                 ...(code === 'wallet_required' && { walletUrl }),
             },
             tool,
+            asked,
         );
     }
 

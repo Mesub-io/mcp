@@ -14,7 +14,11 @@ export const planFilter = idInput(
     'Only this plan: its id, as `list_plans` returns it. Left out: every plan of the project.',
 ).optional();
 
-export const MAX_SEARCH_LENGTH = 100;
+/** As long as the longest external id the API takes. */
+export const MAX_SEARCH_LENGTH = 255;
+
+/** The shortest start of a signature the API matches: a shorter one would match too much. */
+export const SIGNATURE_PREFIX_MIN = 8;
 
 /** Part of a wallet, an id or a signature to look for. */
 export const searchInput = (what: string) =>

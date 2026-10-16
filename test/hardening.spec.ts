@@ -491,6 +491,34 @@ describe('hardening', () => {
                     'connection: wait 40 seconds, then call again.',
             );
         });
+
+        // Seen against the real API: the framework's name for the refusal reached the agent.
+        it('says a 429 in its own words, and names the limit on test deliveries', async () => {
+            api.answer(
+                429,
+                refusal(429, 'rate_limited', 'ThrottlerException: Too Many Requests', true),
+                { 'Retry-After': '32' },
+            );
+
+            const plain = text(await call('update_project', { name: 'Fraise' }));
+            expect(plain).toBe(
+                'Mesub error rate_limited: Too many requests. Too many calls on this ' +
+                    'connection: wait 32 seconds, then call again.',
+            );
+
+            api.answer(
+                429,
+                refusal(429, 'rate_limited', 'ThrottlerException: Too Many Requests', true),
+                { 'Retry-After': '32' },
+            );
+            const test = caseOf('send_test_webhook');
+            const tested = text(await call(test.tool, test.args));
+            expect(tested).toBe(
+                'Mesub error rate_limited: Too many requests. Mesub sends at most 5 test ' +
+                    'deliveries a minute on one connection: wait 32 seconds, then call again.',
+            );
+            expect(`${plain}${tested}`).not.toContain('Throttler');
+        });
     });
 });
 

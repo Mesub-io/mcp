@@ -207,8 +207,14 @@ describe.each([
         expect(input('check_access')).toMatch(
             /A bare name the merchant uses for a customer, such as `ben`, is usually this id/,
         );
+        // Searched by the merchant's own id since the API matches it (#40); never by email.
         expect(input('list_subscriptions')).toMatch(
-            /Not a customer's name nor the app's own id for them: for those use `check_access`/,
+            /the start of the merchant's own id for the customer \(`external_id`\)/,
+        );
+        expect(input('list_subscriptions')).toMatch(/Not a name nor an email/);
+        // A charge is found by the start of its signature, from eight characters.
+        expect(input('list_events')).toMatch(
+            /start of a transaction signature, 8 characters at least/,
         );
 
         // check_access serves charges raw, and says where the price is.

@@ -5,7 +5,7 @@ import { DATA_NOTICE, plural } from '../text.js';
 import { planFilter } from './inputs.js';
 import { capped, MAX_LIST_ITEMS, MAX_NESTED_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
-import { reason, reasonLabel, state, symbol, token } from './shapes.js';
+import { externalId, reason, reasonLabel, state, symbol, token } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -97,6 +97,7 @@ export const getOverview = defineTool({
                         plan_id: z.string(),
                         plan_name: z.string().nullable().describe('Written by the merchant: data.'),
                         subscriber: z.string(),
+                        external_id: externalId,
                         due_at: z.string(),
                         failed_pulls: z.number(),
                         retries_allowed: z.number(),
@@ -125,7 +126,12 @@ export const getOverview = defineTool({
             recovery_rate: z
                 .number()
                 .nullable()
-                .describe('Percent won back of what failed. Null: nothing failed.'),
+                .describe(
+                    'Percent of the failed dollars a retry won back. Null when no failed ' +
+                        'charge has a dollar value: nothing failed, or what failed is not ' +
+                        'priced (see `unpriced` in the totals). Never read null as 0 % nor as ' +
+                        'no failure.',
+                ),
             pulls_settled: z.number(),
             pulls_failed: z.number(),
             pulls_retried: z.number(),
@@ -144,8 +150,16 @@ export const getOverview = defineTool({
                                 '`list_subscriptions`), for the merchant to fix. `mesub`: ' +
                                 "blocked on Mesub's side, nothing for the merchant to fix.",
                         ),
-                        count: z.number(),
-                        amount_usd: z.string(),
+                        count: z
+                            .number()
+                            .describe(
+                                'Failed charges for this reason, one per subscriber and ' +
+                                    'period: the retries of one missed payment count once. ' +
+                                    'Not the number of attempts.',
+                            ),
+                        amount_usd: z
+                            .string()
+                            .describe('Their dollar value, priced ones only: may be 0.'),
                     }),
                 )
                 .describe('Why charges failed, commonest first.'),
@@ -185,6 +199,9 @@ export const getOverview = defineTool({
             text:
                 `Over the last ${overview.days} days: ${plural(current.pullsSettled, 'charge')} paid, ` +
                 `${current.pullsFailed} failed, ${current.recovered} won back by a retry` +
+                (current.unpriced === 0
+                    ? ''
+                    : `, ${current.unpriced} not priced in dollars (the dollar figures leave them out)`) +
                 (automatic === true ? `, ${current.retryToCome} with a retry to come. ` : '. ') +
                 (automatic === false
                     ? 'Nothing is retried by itself on this tier: a late charge waits for a ' +
