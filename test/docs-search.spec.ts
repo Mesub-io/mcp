@@ -247,6 +247,8 @@ describe('DocsSearch, on the Mesub docs', () => {
         ['what is a parked seat', '/docs/lifecycle'],
         ['cancel a subscription', '/reference/manage/cancel'],
         ['late payment retry', '/docs/lifecycle'],
+        ['FakeMesub tier', '/docs/testing'],
+        ['install the SDK before npm', '/docs/quickstart'],
         // Typos.
         ['hasAcess', '/docs/access'],
         ['renewal_upcomming', '/reference/webhooks/subscription-renewal-upcoming'],
