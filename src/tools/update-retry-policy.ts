@@ -84,7 +84,7 @@ export const updateRetryPolicy = defineTool({
                 `The plan now has ${policy}.` +
                 (plan.retryPolicy.honoured
                     ? ''
-                    : " The project's tier does not retry failed charges: the policy is kept and not applied.") +
+                    : " The project's tier does not retry failed charges: nothing is retried by itself.") +
                 ` ${DATA_NOTICE}`,
         };
     },

@@ -1169,20 +1169,19 @@ describe('the project tools, in detail', () => {
             expect(api.projectCalls()[0]?.headers['content-type']).toBeUndefined();
         });
 
-        it('says when a policy is kept and not applied', async () => {
+        it('says only that the tier does not retry, after a clear on such a tier', async () => {
             api.answer(200, {
                 ...answers.plan,
+                retryAttempts: null,
+                retryDelayMinutes: null,
                 retryPolicy: { honoured: false, reason: `The FREE tier does not retry. ${POISON}` },
             });
-            const kept = await call('update_retry_policy', {
-                plan_id: PLAN_ID,
-                retry_attempts: 3,
-                retry_delay_minutes: 60,
-            });
-            expect(sentence(kept)).toMatch(
-                /^The plan now has 3 retries, 60 minutes apart\. The project's tier does not retry failed charges/,
+            const cleared = await call('update_retry_policy', { plan_id: PLAN_ID });
+            expect(sentence(cleared)).toMatch(
+                /^The plan now has the built in policy\. The project's tier does not retry failed charges: nothing is retried by itself\./,
             );
-            expect(sentence(kept)).not.toContain(POISON);
+            expect(sentence(cleared)).not.toContain(POISON);
+            expect(sentence(cleared)).not.toContain('kept');
         });
     });
 
