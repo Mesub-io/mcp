@@ -248,7 +248,8 @@ describe('DocsSearch, on the Mesub docs', () => {
         ['cancel a subscription', '/reference/manage/cancel'],
         ['late payment retry', '/docs/lifecycle'],
         ['FakeMesub tier', '/docs/testing'],
-        ['install the SDK before npm', '/docs/quickstart'],
+        ['install @mesub/node', '/docs/quickstart'],
+        ['build @mesub/react from source', '/docs/quickstart'],
         // Typos.
         ['hasAcess', '/docs/access'],
         ['renewal_upcomming', '/reference/webhooks/subscription-renewal-upcoming'],
@@ -288,6 +289,16 @@ describe('DocsSearch, on the Mesub docs', () => {
 
         const [code] = search.search('mesub.webhooks.verify', 1);
         expect(code?.passage).toContain('mesub.webhooks.verify');
+    });
+
+    it('installs @mesub/node from npm, and only @mesub/react from source', () => {
+        const hit = search
+            .search('npm install @mesub/node', TOP)
+            .find((found) => found.url.startsWith(`${DOCS_BASE_URL}/docs/quickstart`));
+        expect(hit?.passage).toContain('npm install @mesub/node');
+        const text = DOCS_INDEX.sections.map((section) => section.text).join('\n');
+        expect(text).toContain('mesub-react-0.1.0.tgz');
+        expect(text).not.toContain('mesub-node-0.1.0.tgz');
     });
 
     it('keeps every passage within its cap, whatever is asked', () => {
