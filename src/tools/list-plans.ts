@@ -4,7 +4,7 @@ import { PLAN_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, plural, tally } from '../text.js';
 import { capped, fit, MAX_LIST_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
-import { planOut, planOutput } from './shapes.js';
+import { planOut, planOutput, signUrl } from './shapes.js';
 import { defineTool } from './tool.js';
 
 export const listPlans = defineTool({
@@ -13,22 +13,25 @@ export const listPlans = defineTool({
     description:
         'List the subscription plans of the project, newest first, whatever their state: ' +
         'what each one charges and how often, in which token, how many subscribers it has ' +
-        'and what it collected this period. Use it to find a plan, its id or its slug, or to ' +
+        'and what it collected over its last period. Use it to find a plan, its id or its slug, or to ' +
         'compare plans. For one plan with its failed charges and latest attempts use ' +
         '`get_plan` with its id. It does not create or edit a plan: `prepare_plan` prepares ' +
-        'one for the merchant to sign, and a plan it prepared shows here as PENDING until ' +
-        'they do. Every amount comes with ' +
+        'one for the merchant to sign, and a plan it prepared shows here as PENDING, with ' +
+        '`sign_url`, until they do. Every amount comes with ' +
         'a display value such as "9.99 USDC": quote that one, never convert the raw amount ' +
         'yourself. Changes nothing.',
     inputSchema: z.strictObject({}),
     outputSchema: z.object({
         plans: z.array(
             planOutput.extend({
+                sign_url: signUrl,
                 subscribers: z.number(),
                 collected_this_period: z
                     .string()
                     .describe(
-                        'Paid charges of the current period, in the smallest unit of the mint.',
+                        'Paid charges over the last period of the plan: its `period_hours` ' +
+                            'back from now, a rolling window, not a calendar month nor a ' +
+                            "subscriber's billing period. In the smallest unit of the mint.",
                     ),
                 collected_this_period_display: z
                     .string()
@@ -53,6 +56,7 @@ export const listPlans = defineTool({
         const { kept, truncated } = capped(all, MAX_LIST_ITEMS);
         const plans = kept.map((plan) => ({
             ...planOut(plan),
+            sign_url: plan.signUrl,
             subscribers: plan.subscribers,
             collected_this_period: plan.collectedThisPeriod,
             collected_this_period_display: displayAmount(
@@ -76,6 +80,9 @@ export const listPlans = defineTool({
                           PLAN_STATUSES,
                       )}.` +
                       (data.truncated ? ` Only the newest ${plans.length} are returned.` : '') +
+                      (all.some((plan) => plan.signUrl !== null)
+                          ? ' A PENDING plan carries `sign_url`, where the merchant signs it.'
+                          : '') +
                       ` ${DATA_NOTICE}`,
         };
     },

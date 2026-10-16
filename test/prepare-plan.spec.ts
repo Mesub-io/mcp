@@ -423,7 +423,12 @@ describe('prepare_plan', () => {
             const data = await prepared(PRO);
 
             expect(Object.keys(data).sort()).toEqual(['next_step', 'plan', 'sign_url']);
-            expect(Object.keys(data.plan).sort()).toEqual(Object.keys(read.plan).sort());
+            // get_plan carries the link in its plan; prepare_plan beside it.
+            expect(Object.keys(data.plan).sort()).toEqual(
+                Object.keys(read.plan)
+                    .filter((key) => key !== 'sign_url')
+                    .sort(),
+            );
             expect(data.plan).toMatchObject({
                 id: PREPARED_ID,
                 slug: 'pro',
@@ -883,6 +888,22 @@ describe('prepare_plan', () => {
             expect(text(result)).toBe(`Mesub error ${code}: ${message} ${advice}`);
             expect(api.projectCalls()).toHaveLength(1);
         });
+
+        it('names the end as the tool takes it, never as the API spells it', async () => {
+            api.answer(
+                400,
+                refusal(
+                    400,
+                    'end_date_too_soon',
+                    'The end date has to be at least one billing period away. Leave endsAt out for a plan with no end.',
+                ),
+            );
+
+            const said = text(await call({ ...PRO, ends_at: '2027-01-31' }));
+
+            expect(said).toContain('Leave ends_at out for a plan with no end.');
+            expect(said).not.toContain('endsAt');
+        });
     });
 
     describe('the token, on whichever deployment', () => {
@@ -1094,13 +1115,26 @@ describe('prepare_plan', () => {
 
             const result = await call(PRO);
 
+            // No retries were sent: nothing to say of them.
             expect(text(result)).toBe(
                 `Mesub error forbidden: ${ceiling} Nothing was prepared. Relay that message to ` +
                     'the merchant as it is: only they can delete a plan or change the tier, in ' +
-                    'the dashboard, and no tool here does either. If it is about retries, call ' +
-                    'again without `retry_attempts` and `retry_delay_minutes`.',
+                    'the dashboard, and no tool here does either.',
             );
             expect(api.projectCalls()).toHaveLength(1);
+        });
+
+        it('says to leave the retries out only when the refused call sent them', async () => {
+            api.answer(
+                403,
+                refusal(403, 'forbidden', 'This tier does not retry: no retry policy is taken.'),
+            );
+
+            const result = await call({ ...PRO, retry_attempts: 3, retry_delay_minutes: 60 });
+
+            expect(text(result)).toMatch(
+                / If it is about retries, call again without `retry_attempts` and `retry_delay_minutes`\.$/,
+            );
         });
 
         it('says how long to wait past the writes of a minute, and never tries again', async () => {

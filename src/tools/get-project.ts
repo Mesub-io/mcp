@@ -21,7 +21,8 @@ export const getProject = defineTool({
         'has against what the tier allows, plan by plan. Use it to answer which project this ' +
         'is, which tier it is on, or how close it is to a cap. For what each plan charges use ' +
         '`list_plans`; for revenue and failed charges use `get_overview`. It takes no ' +
-        'argument: a connection reads one project and cannot name another. Changes nothing.',
+        'argument: a connection reads one project, and another needs a new connection. ' +
+        'Changes nothing.',
     inputSchema: z.strictObject({}),
     outputSchema: z.object({
         project: projectOutput,
@@ -41,8 +42,10 @@ export const getProject = defineTool({
                     collected_this_period: z
                         .string()
                         .describe(
-                            "In the smallest unit of the plan's token: `list_plans` returns it " +
-                                'as a display value.',
+                            'Paid charges over the last period of the plan: its period back ' +
+                                'from now, a rolling window, not a calendar month. In the ' +
+                                "smallest unit of the plan's token: `list_plans` returns it as a " +
+                                'display value.',
                         ),
                     collected_this_period_usd: z.string(),
                     unpriced_this_period: z.number(),

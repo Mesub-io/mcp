@@ -327,7 +327,8 @@ export const preparePlan = defineTool({
                 message:
                     'With two or more destinations, paid_wallet is the one of them the merchant ' +
                     'chose to receive the charges for now. It is always one of destinations, ' +
-                    'and is not sent without them.',
+                    'and is not sent without them. Ask the merchant which of their wallets is ' +
+                    'paid for now, then call again: never pick one yourself.',
             },
         )
         .refine(

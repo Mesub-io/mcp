@@ -6,6 +6,7 @@ import { ERROR_META_KEY } from '../src/tools/result.js';
 import * as answers from './fixtures/agent-answers.js';
 import {
     DELIVERY_ID,
+    EXTERNAL_ID,
     older,
     COIN_TOKEN,
     OTHER_MINT,
@@ -364,6 +365,7 @@ describe('the project tools, in detail', () => {
             ]);
             expect(plan.upcoming[0]).toEqual({
                 subscriber: WALLET,
+                external_id: EXTERNAL_ID,
                 due_at: '2026-11-01T12:00:00.000Z',
                 failed_pulls: 0,
                 retries: 3,
@@ -796,8 +798,14 @@ describe('the project tools, in detail', () => {
             const days = await call('list_events', { days: 45, page: 3 });
             expect(days.structuredContent).toEqual({
                 days: [
-                    { day: '2026-10-01', pulled_usd: '99.90', failed_usd: '9.99' },
-                    { day: '2026-09-30', pulled_usd: '0', failed_usd: '0' },
+                    {
+                        day: '2026-10-01',
+                        pulled_usd: '99.90',
+                        failed_usd: '9.99',
+                        failed_unpriced: 2,
+                    },
+                    // An API older than the count says nothing of it.
+                    { day: '2026-09-30', pulled_usd: '0', failed_usd: '0', failed_unpriced: null },
                 ],
                 page: 1,
                 has_more: true,
@@ -809,6 +817,10 @@ describe('the project tools, in detail', () => {
             });
             expect(api.projectCalls()[0]?.query).toEqual({ days: '45', page: '3' });
             expect(sentence(days)).toMatch(/More exist: call again with page 2\./);
+            // Failures with no dollar value are named by their day, outside `failed_usd`.
+            expect(sentence(days)).toMatch(
+                /Failed charges with no dollar value, outside `failed_usd`, on 2026-10-01 \(2\)\./,
+            );
 
             api.calls.length = 0;
             api.answer(200, answers.eventLines);
@@ -817,7 +829,14 @@ describe('the project tools, in detail', () => {
             expect(api.projectCalls()[0]?.query).toEqual({ day: '2026-10-01' });
             expect(total).toBe(2);
             expect(truncated).toBe(false);
-            expect(events[0]).toMatchObject({ source: 'pull', type: 'REJECTED', detail: null });
+            expect(events[0]).toMatchObject({
+                source: 'pull',
+                type: 'REJECTED',
+                detail: null,
+                external_id: EXTERNAL_ID,
+            });
+            // An event of an API older than the field: null, never absent.
+            expect(events[1]).toHaveProperty('external_id', null);
             // An event's detail is kept as the text of its JSON: data, in one bounded field.
             expect(events[1]).toMatchObject({
                 source: 'event',
@@ -864,9 +883,14 @@ describe('the project tools, in detail', () => {
             expect((result.structuredContent as Data).upcoming[0]).toMatchObject({
                 kind: 'charge',
                 renewal_issue: 'balance',
+                // From an API older than these: null, never absent.
+                late_reason: null,
+                blocked_since: null,
+                external_id: null,
+                expected_to_fail: true,
             });
             expect(sentence(result)).toMatch(
-                /^2 lines scheduled: 1 charge, 1 ends\. 1 charge expected to fail\./,
+                /^2 lines scheduled: 1 charge, 1 ends\. 1 charge expected to fail \(`expected_to_fail`\): 1 flagged by the check before renewal\./,
             );
             // Nothing asked: nothing sent, the API's own defaults apply.
             expect(api.projectCalls()[0]?.query).toEqual({});
@@ -1178,7 +1202,7 @@ describe('the project tools, in detail', () => {
             });
             const cleared = await call('update_retry_policy', { plan_id: PLAN_ID });
             expect(sentence(cleared)).toMatch(
-                /^The plan now has the built in policy\. The project's tier does not retry failed charges: nothing is retried by itself\./,
+                /^The plan now has the built in policy: 3 retries, a day apart, or a quarter of the period apart when that is shorter, and no more than fit inside one period of the plan\. The project's tier does not retry failed charges: nothing is retried by itself\./,
             );
             expect(sentence(cleared)).not.toContain(POISON);
             expect(sentence(cleared)).not.toContain('kept');
@@ -1691,7 +1715,8 @@ describe('the project tools, in detail', () => {
                 { days: 0 },
                 { days: 3651 },
                 { q: '' },
-                { q: 'x'.repeat(101) },
+                // As long as the longest external id, and no longer.
+                { q: 'x'.repeat(256) },
                 { q: 'a\u0000b' },
                 { plan_id: 'a/b' },
             ]) {
@@ -1787,7 +1812,10 @@ describe('the project tools, in detail', () => {
             api.answer(200, { ...answers.plan, retryAttempts: null, retryDelayMinutes: null });
             const cleared = await call('update_retry_policy', { plan_id: PLAN_ID });
             expect(api.projectCalls()[0]?.body).toEqual({});
-            expect(sentence(cleared)).toMatch(/^The plan now has the built in policy\./);
+            // What the built in policy is, said as Mesub applies it.
+            expect(sentence(cleared)).toMatch(
+                /^The plan now has the built in policy: 3 retries, a day apart, or a quarter of the period apart when that is shorter/,
+            );
         });
 
         it('creates a webhook only for an https URL without credentials, and events the API has', async () => {

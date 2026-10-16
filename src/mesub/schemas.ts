@@ -127,6 +127,8 @@ export const MAX_DESCRIPTION_LENGTH = 1000;
 export const MAX_REASON_LENGTH = 300;
 export const MAX_EXCERPT_LENGTH = 500;
 export const MAX_DETAIL_LENGTH = 1000;
+/** The merchant's own id for a customer: the API takes 255 characters at most. */
+export const MAX_EXTERNAL_ID_LENGTH = 255;
 /** Past the four wallets a plan locks, whatever the API comes to allow. */
 export const MAX_DESTINATIONS_READ = 16;
 /** Past any list of events an endpoint takes, whatever the API adds. */
@@ -216,6 +218,19 @@ const countsByCode = () =>
         );
 /** An address of the dashboard, kept whole or refused: see `isLink`. */
 const link = z.string().refine(isLink);
+/**
+ * The merchant's own id for a customer, as their server gave it: text somebody
+ * else wrote, kept whole or refused, never cut (one cut short is another id).
+ * Null when none was given, and from an API older than the field. Never the
+ * customer's email, which no schema here reads.
+ */
+const externalId = z
+    .string()
+    .max(MAX_EXTERNAL_ID_LENGTH)
+    .nullish()
+    .transform((value) => value ?? null);
+/** Where a PENDING plan is signed; null on any other, and from an API older than the field. */
+const signUrl = link.nullish().transform((value) => value ?? null);
 
 const planStatus = code();
 const subscriptionStatus = code();
@@ -328,6 +343,7 @@ export type PreparedPlan = z.infer<typeof preparedPlanSchema>;
 /** `GET /agent/plans`. */
 export const agentPlansSchema = z.array(
     agentPlanSchema.extend({
+        signUrl,
         subscribers: count,
         collectedThisPeriod: amount,
         collectedThisPeriodUsd: usd,
@@ -354,7 +370,7 @@ export type AgentAttempt = z.infer<typeof attemptSchema>;
 
 /** `GET /agent/plans/:id`. */
 export const agentPlanDetailSchema = z.object({
-    plan: agentPlanSchema,
+    plan: agentPlanSchema.extend({ signUrl }),
     subscribers: countsByCode(),
     monthly: amount,
     monthlyUsd: usd.nullable(),
@@ -364,7 +380,13 @@ export const agentPlanDetailSchema = z.object({
     outcomes: countsByCode(),
     failures: z.array(z.object({ reason: text(MAX_REASON_LENGTH), reasonLabel, count })),
     upcoming: z.array(
-        z.object({ subscriber: plain, dueAt: date, failedPulls: count, retries: count }),
+        z.object({
+            subscriber: plain,
+            externalId,
+            dueAt: date,
+            failedPulls: count,
+            retries: count,
+        }),
     ),
     nextPull: z.object({ dueAt: date, amount, manual: z.boolean() }).nullable(),
     attempts: z.array(attemptSchema.extend({ subscriptionId: id })),
@@ -374,6 +396,7 @@ export type AgentPlanDetail = z.infer<typeof agentPlanDetailSchema>;
 const subscriptionRowSchema = z.object({
     id,
     subscriber: plain,
+    externalId,
     planId: id,
     planName: text(MAX_NAME_LENGTH).nullable(),
     status: subscriptionStatus,
@@ -523,7 +546,15 @@ export type AccessList = z.infer<typeof agentAccessListSchema>;
 
 /** `GET /agent/events` without a day: the days that had anything. */
 export const agentEventDaysSchema = z.object({
-    days: z.array(z.object({ day: plain, pulledUsd: usd, failedUsd: usd })),
+    days: z.array(
+        z.object({
+            day: plain,
+            pulledUsd: usd,
+            failedUsd: usd,
+            // Failed charges with no dollar value, outside `failedUsd`. Null: an API older than it.
+            failedUnpriced: count.nullish().transform((value) => value ?? null),
+        }),
+    ),
     page: count,
     hasMore: z.boolean(),
 });
@@ -539,6 +570,7 @@ export const agentEventLinesSchema = z.array(
         occurredAt: date,
         subscriptionId: id.nullable(),
         subscriber: plain.nullable(),
+        externalId,
         planId: id.nullable(),
         planName: text(MAX_NAME_LENGTH).nullable(),
         amount: amount.nullable(),
@@ -569,6 +601,7 @@ export const agentUpcomingSchema = z.array(
     z.object({
         subscriptionId: id,
         subscriber: plain,
+        externalId,
         planId: id,
         planName: text(MAX_NAME_LENGTH).nullable(),
         kind: code(),
@@ -583,6 +616,15 @@ export const agentUpcomingSchema = z.array(
         amountUsd: usd.nullable(),
         renewalIssue: code().nullable(),
         renewalCheckedAt: date.nullable(),
+        // On a retry: INSUFFICIENT_BALANCE, APPROVAL_REVOKED or AUTHORITY_CLOSED.
+        // These three are absent from an API older than them: null then.
+        lateReason: code()
+            .nullish()
+            .transform((value) => value ?? null),
+        blockedSince: date.nullish().transform((value) => value ?? null),
+        blockedReason: code()
+            .nullish()
+            .transform((value) => value ?? null),
     }),
 );
 export type AgentUpcomingLine = z.infer<typeof agentUpcomingSchema>[number];
@@ -640,6 +682,7 @@ export const agentOverviewSchema = z.object({
                 planId: id,
                 planName: text(MAX_NAME_LENGTH).nullable(),
                 subscriber: plain,
+                externalId,
                 dueAt: date,
                 failedPulls: count,
                 retriesAllowed: count,

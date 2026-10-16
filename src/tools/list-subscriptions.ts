@@ -19,7 +19,7 @@ export const listSubscriptions = defineTool({
         'time: who pays for which plan, where each one stands, whether it has access and ' +
         'when it is charged next. Use it to find the subscribers who are late on a payment ' +
         '(`status: "late"`), those Mesub stopped charging (`"stopped"`), those who ' +
-        'cancelled, or the new ones, and to look a subscriber up by part of their wallet. ' +
+        'cancelled, or the new ones, and to look a subscriber up by wallet or external id. ' +
         'It also returns how many subscriptions are in each of those groups and what they ' +
         'bring a month. A row with `blocked_since` set has its charges blocked by the ' +
         "plan's setup or by Mesub, not by a late subscriber: `blocked_reason` says what " +
@@ -38,8 +38,9 @@ export const listSubscriptions = defineTool({
                     '`new` (subscribed within `days`).',
             ),
         q: searchInput(
-            "Part of a wallet address, or a subscription id. Not a customer's name nor the " +
-                "app's own id for them: for those use `check_access`.",
+            "Part of a wallet address, the start of the merchant's own id for the customer " +
+                '(`external_id`), or a subscription id. Not a name nor an email: no tool ' +
+                'searches those.',
         ).optional(),
         days: z
             .number()

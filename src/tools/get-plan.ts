@@ -5,7 +5,16 @@ import { DATA_NOTICE, known, plural } from '../text.js';
 import { idInput } from './inputs.js';
 import { capped, MAX_NESTED_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
-import { attemptOut, attemptOutput, planOut, planOutput, reason, reasonLabel } from './shapes.js';
+import {
+    attemptOut,
+    attemptOutput,
+    externalId,
+    planOut,
+    planOutput,
+    reason,
+    reasonLabel,
+    signUrl,
+} from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -29,7 +38,7 @@ export const getPlan = defineTool({
         plan_id: idInput('The id of the plan, as `list_plans` returns it. Not its slug.'),
     }),
     outputSchema: z.object({
-        plan: planOutput,
+        plan: planOutput.extend({ sign_url: signUrl }),
         subscribers_by_status: z
             .record(z.string(), z.number())
             .describe(
@@ -64,6 +73,7 @@ export const getPlan = defineTool({
             .array(
                 z.object({
                     subscriber: z.string(),
+                    external_id: externalId,
                     due_at: z.string(),
                     failed_pulls: z.number(),
                     retries: z.number(),
@@ -99,7 +109,7 @@ export const getPlan = defineTool({
 
         return {
             data: {
-                plan: planOut(plan),
+                plan: { ...planOut(plan), sign_url: plan.signUrl },
                 subscribers_by_status: detail.subscribers,
                 monthly: detail.monthly,
                 monthly_display: shown(detail.monthly),
@@ -125,7 +135,12 @@ export const getPlan = defineTool({
             text:
                 `The plan is ${known(plan.status, PLAN_STATUSES)}, with ${plural(subscribers, 'subscription')} and ` +
                 `${plural(detail.outcomes.PAID ?? 0, 'paid charge')} out of ` +
-                `${Object.values(detail.outcomes).reduce((sum, n) => sum + n, 0)}. ${DATA_NOTICE}`,
+                `${Object.values(detail.outcomes).reduce((sum, n) => sum + n, 0)}. ` +
+                // The address stands alone, so that nothing after it is read as part of it.
+                (plan.signUrl === null
+                    ? ''
+                    : `It is not on chain: the merchant reviews and signs it at ${plan.signUrl} . `) +
+                DATA_NOTICE,
         };
     },
 });

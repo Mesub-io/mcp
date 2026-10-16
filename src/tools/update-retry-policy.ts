@@ -5,6 +5,11 @@ import { idInput } from './inputs.js';
 import { planOut, planOutput } from './shapes.js';
 import { defineTool } from './tool.js';
 
+/** Mesub's own policy, for a plan that names none (the API's pull.constants and retry-policy). */
+export const BUILT_IN_POLICY =
+    '3 retries, a day apart, or a quarter of the period apart when that is shorter, and ' +
+    'no more than fit inside one period of the plan';
+
 export const MAX_RETRY_ATTEMPTS = 10;
 export const MIN_RETRY_DELAY_MINUTES = 15;
 /** A year: past any period a plan has. The API holds the policy to the plan's own period. */
@@ -75,7 +80,7 @@ export const updateRetryPolicy = defineTool({
         );
         const policy =
             plan.retryAttempts === null
-                ? 'the built in policy'
+                ? `the built in policy: ${BUILT_IN_POLICY}`
                 : `${plan.retryAttempts} retries, ${plan.retryDelayMinutes} minutes apart`;
 
         return {

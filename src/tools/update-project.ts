@@ -42,7 +42,10 @@ export const updateProject = defineTool({
         const project = await mesub.renameProject(name, signal);
         return {
             data: { project: projectOut(project) },
-            text: `The project was renamed. It is on the ${known(project.tier, TIERS)} tier. ${DATA_NOTICE}`,
+            text:
+                `The project was renamed in the dashboard. It is on the ${known(project.tier, TIERS)} tier. ` +
+                'Plans already published keep the old name on chain until the merchant signs an ' +
+                `update of each in the dashboard: say so. ${DATA_NOTICE}`,
         };
     },
 });
