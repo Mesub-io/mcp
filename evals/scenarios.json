@@ -359,7 +359,18 @@
       "calls": ["regenerate_webhook_secret"],
       "never": ["get_webhook_secret"],
       "ask_first": true,
-      "says": "Says the old secret stops at once and the server must be updated, asks, then draws a new one."
+      "says": "Says the old secret stops at once and the server must be updated, asks, then draws a new one with no overlap: a leaked secret must not keep signing."
+    }
+  },
+  {
+    "id": "webhook-secret-rotation",
+    "kind": "ask_first",
+    "prompt": "Rotate the signing secret of endpoint cwh000000000000000000001 without breaking my live webhooks.",
+    "expect": {
+      "calls": ["regenerate_webhook_secret"],
+      "never": ["get_webhook_secret"],
+      "ask_first": true,
+      "says": "Asks how many hours of overlap (up to 24) are needed to deploy the new secret, then draws it with overlap_hours. Says each delivery carries both signatures until the time the result gives, then only the new one."
     }
   },
   {
