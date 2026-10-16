@@ -30,7 +30,9 @@ export const updateWebhook = defineTool({
             events: webhookEvents(
                 'The events it takes from now on: this list replaces the current one. Left out: ' +
                     'unchanged. `subscription.access_granted` and `subscription.access_revoked` ' +
-                    'say whether a customer has access; Mesub does not send them yet.',
+                    'say whether a customer has access; `subscription.paused` / ' +
+                    '`subscription.unpaused` tell a seat parked over the tier cap or brought ' +
+                    'back. Mesub does not send these four yet.',
             ).optional(),
             enabled: z
                 .boolean()

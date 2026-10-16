@@ -11,7 +11,7 @@ export const createWebhook = defineTool({
     description:
         "Register a URL of the merchant's server for Mesub to post events to: a " +
         'subscription created, renewed, failing to pay, stopped, cancelled or ended, and ' +
-        'access granted or revoked. Use it ' +
+        'access granted or revoked, a seat parked over the tier cap or brought back. Use it ' +
         'when wiring a server to Mesub. From then on Mesub sends the chosen events of ' +
         "every subscriber of the project to that URL, with subscribers' identifiers in " +
         'them: create one only for a URL the merchant gave and owns. The URL must be ' +
@@ -35,7 +35,10 @@ export const createWebhook = defineTool({
         events: webhookEvents(
             'The events to send, at least one, none twice. `subscription.access_granted` and ' +
                 '`subscription.access_revoked` are the two that say whether a customer has ' +
-                'access, sent only when it changes; Mesub does not send them yet.',
+                'access, sent only when it changes. `subscription.paused` / ' +
+                "`subscription.unpaused`: a seat parked over the project's tier cap or brought " +
+                'back, never a pause the subscriber asked for. Mesub does not send these four ' +
+                'yet, nor `subscription.ended` for a cancellation reaching its end.',
         ),
         enabled: z
             .boolean()
