@@ -15,7 +15,8 @@ export const sendTestWebhook = defineTool({
         '`test` event, or a sample of one of the events the endpoint takes. The body is ' +
         'marked `test: true` and concerns no real subscriber, but it does reach the ' +
         "merchant's server, which may act on it. One try, no retry, one test at a time per " +
-        'endpoint, five a minute; refused on a disabled endpoint. The delivery is queued: ' +
+        'endpoint, five calls a minute, refused ones included; ' +
+        'refused on a disabled endpoint. The delivery is queued: ' +
         'read `list_webhook_deliveries` a moment later for what the server answered. It ' +
         'cannot send a real event again.',
     inputSchema: z.strictObject({

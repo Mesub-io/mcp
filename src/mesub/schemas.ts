@@ -389,7 +389,7 @@ export const agentPlanDetailSchema = z.object({
         }),
     ),
     nextPull: z.object({ dueAt: date, amount, manual: z.boolean() }).nullable(),
-    attempts: z.array(attemptSchema.extend({ subscriptionId: id })),
+    attempts: z.array(attemptSchema.extend({ subscriptionId: id, externalId })),
 });
 export type AgentPlanDetail = z.infer<typeof agentPlanDetailSchema>;
 

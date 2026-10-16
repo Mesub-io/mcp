@@ -1124,17 +1124,39 @@ describe('prepare_plan', () => {
             expect(api.projectCalls()).toHaveLength(1);
         });
 
-        it('says to leave the retries out only when the refused call sent them', async () => {
+        it('says to leave the retries out when the tier is what refused them', async () => {
             api.answer(
                 403,
-                refusal(403, 'forbidden', 'This tier does not retry: no retry policy is taken.'),
+                refusal(
+                    403,
+                    'retries_not_on_tier',
+                    'This tier does not retry: no retry policy is taken.',
+                ),
             );
 
             const result = await call({ ...PRO, retry_attempts: 3, retry_delay_minutes: 60 });
 
-            expect(text(result)).toMatch(
-                / If it is about retries, call again without `retry_attempts` and `retry_delay_minutes`\.$/,
+            expect(text(result)).toBe(
+                'Mesub error retries_not_on_tier: This tier does not retry: no retry policy is ' +
+                    "taken. Nothing was prepared. The project's tier takes no retry policy: call " +
+                    'again without `retry_attempts` and `retry_delay_minutes` if the merchant ' +
+                    'agrees, telling them failed charges then wait for a retry by hand.',
             );
+        });
+
+        // The cap is the cause even when the call sent retries: leaving them out frees nothing.
+        it('says nothing of retries when the plan cap refused a call that sent them', async () => {
+            const ceiling = 'This project holds the 1 plan its tier allows.';
+            api.answer(403, refusal(403, 'plan_cap_reached', ceiling));
+
+            const result = await call({ ...PRO, retry_attempts: 3, retry_delay_minutes: 60 });
+
+            expect(text(result)).toBe(
+                `Mesub error plan_cap_reached: ${ceiling} Nothing was prepared. Relay that ` +
+                    'message to the merchant as it is: only they can delete a plan or change the ' +
+                    'tier, in the dashboard, and no tool here does either.',
+            );
+            expect(text(result)).not.toMatch(/retry_attempts/);
         });
 
         it('says how long to wait past the writes of a minute, and never tries again', async () => {

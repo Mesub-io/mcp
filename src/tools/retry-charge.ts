@@ -14,16 +14,16 @@ export const retryCharge = defineTool({
         "subscriber's money: when it succeeds, the plan's amount leaves their wallet for " +
         "the merchant's, on chain, and cannot be taken back from here. Ask the merchant, " +
         'naming the subscription, before every call, and never call it in a loop over a ' +
-        'list. It works only on a subscription that is behind on its payment (status ' +
-        'UNPAID) and not paused. Its `retry_available_at` says when a retry is allowed, ' +
-        'and a row of `list_subscriptions` is enough to know it; `get_subscription` adds the ' +
-        'price to quote, the charges it ran and why they failed. ' +
-        'Mesub limits retries by hand: a wait between two, which the refusal states ' +
-        '("Try again in N minutes"), and on the Free tier three per missed period. A ' +
-        'refusal means nothing was charged. The charge is queued, not settled: read ' +
-        '`get_subscription` afterwards for its outcome. To change how failed charges are ' +
-        'retried automatically use `update_retry_policy`. It cannot charge a subscriber ' +
-        "who is not late, nor any other amount than the plan's.",
+        'list. Only on an UNPAID one, not paused. Its `retry_available_at` ' +
+        'says when a retry is allowed, and a row of `list_subscriptions` is enough to know ' +
+        'it; `get_subscription` adds the price to quote, the charges run and why they ' +
+        'failed. Check `late_reason` first: on APPROVAL_REVOKED or AUTHORITY_CLOSED no ' +
+        'retry can succeed, so offer none. Mesub refuses, spending no retry, one that ' +
+        'cannot succeed or a wallet short of funds. Retries by hand are limited: a ' +
+        'wait between two, and three per missed period on Free. A refusal ' +
+        'charges nothing. The charge is queued, not settled: read ' +
+        '`get_subscription` afterwards for its outcome. Automatic retries: ' +
+        "`update_retry_policy`. It never charges another amount than the plan's.",
     inputSchema: z.strictObject({
         subscription_id: idInput(
             'The id of the late subscription, as `list_subscriptions` returns it.',

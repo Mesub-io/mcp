@@ -45,14 +45,8 @@ interface Refused {
     requestId?: string | null;
 }
 
-/** What a refused call asked, as far as the advice depends on it. */
-export interface Asked {
-    /** The call sent a retry policy (`prepare_plan`). */
-    retries?: boolean;
-}
-
 /** What only the merchant can do about a plan that was not prepared, and what the agent can. */
-function prepareAdvice({ code, status, walletUrl }: Refused, asked: Asked): string | undefined {
+function prepareAdvice({ code, status, walletUrl }: Refused): string | undefined {
     if (code === 'wallet_required') {
         // The address stands alone, so that nothing after it is read as part of it.
         const where = walletUrl ? `at ${walletUrl} ,` : 'in the settings of the Mesub dashboard,';
@@ -90,15 +84,38 @@ function prepareAdvice({ code, status, walletUrl }: Refused, asked: Asked): stri
             'merchant for another name.'
         );
     }
+    // By its code: a call that sent retries can still be refused for the plan cap.
+    if (code === 'retries_not_on_tier') {
+        return (
+            "Nothing was prepared. The project's tier takes no retry policy: call again " +
+            'without `retry_attempts` and `retry_delay_minutes` if the merchant agrees, ' +
+            'telling them failed charges then wait for a retry by hand.'
+        );
+    }
     if (status === 403) {
         return (
             'Nothing was prepared. Relay that message to the merchant as it is: only they can ' +
-            'delete a plan or change the tier, in the dashboard, and no tool here does either.' +
-            // Only a call that sent retries can have been refused for them.
-            (asked.retries
-                ? ' If it is about retries, call again without `retry_attempts` and ' +
-                  '`retry_delay_minutes`.'
-                : '')
+            'delete a plan or change the tier, in the dashboard, and no tool here does either.'
+        );
+    }
+    return undefined;
+}
+
+/** What a refused retry by hand leaves to do: nothing here, as long as the cause lasts. */
+function retryAdvice({ code }: Refused): string | undefined {
+    if (code === 'retry_cannot_succeed') {
+        return (
+            'Nothing was charged and no retry was spent: no retry can succeed while this ' +
+            'lasts. Tell the merchant why, as the message says, and do not call `retry_charge` ' +
+            'on this subscription again. A revoked approval or a closed authority is fixed ' +
+            'only by the subscriber, subscribing again.'
+        );
+    }
+    if (code === 'insufficient_balance') {
+        return (
+            'Nothing was charged and no retry was spent: the wallet holds less than the ' +
+            'period, as the message says. A retry can succeed only once the subscriber adds ' +
+            'funds: tell the merchant, and do not call again before.'
         );
     }
     return undefined;
@@ -115,7 +132,7 @@ const PREPARED_ALREADY =
  * correct the request, look the id up, connect again, hand the merchant what
  * only they can do, or stop.
  */
-export function adviceFor(refusal: Refused, tool?: string, asked: Asked = {}): string {
+export function adviceFor(refusal: Refused, tool?: string): string {
     const { code, status, retryable, retryAfterSeconds } = refusal;
     const seconds = retryAfterSeconds === null ? null : `${retryAfterSeconds} seconds`;
     const preparing = tool === 'prepare_plan';
@@ -123,8 +140,8 @@ export function adviceFor(refusal: Refused, tool?: string, asked: Asked = {}): s
     if (status === 429) {
         const wait = `wait ${seconds ?? 'a minute'}, then call again.`;
         return tool === 'send_test_webhook'
-            ? `Mesub sends at most ${TEST_DELIVERIES_A_MINUTE} test deliveries a minute on one ` +
-                  `connection: ${wait}`
+            ? `Mesub takes at most ${TEST_DELIVERIES_A_MINUTE} test sends a minute on one ` +
+                  `connection, refused ones included: ${wait}`
             : `Too many calls on this connection: ${wait}`;
     }
     if (code === 'invalid_agent_token') {
@@ -143,8 +160,10 @@ export function adviceFor(refusal: Refused, tool?: string, asked: Asked = {}): s
             `calling again.${preparing ? PREPARED_ALREADY : ''}`
         );
     }
-    const prepare = preparing ? prepareAdvice(refusal, asked) : undefined;
+    const prepare = preparing ? prepareAdvice(refusal) : undefined;
     if (prepare !== undefined) return prepare;
+    const retry = tool === 'retry_charge' ? retryAdvice(refusal) : undefined;
+    if (retry !== undefined) return retry;
 
     if (status === 404) {
         return 'Nothing of this project has that id or slug: take it from the tool that lists them.';
@@ -199,8 +218,8 @@ function ended(message: string): string {
     return said === '' || /[.!?]["')\]]?$/.test(said) ? said : `${said}.`;
 }
 
-function refused(error: Refused, tool: string, asked: Asked = {}): CallToolResult {
-    const advice = adviceFor(error, tool, asked);
+function refused(error: Refused, tool: string): CallToolResult {
+    const advice = adviceFor(error, tool);
     // Checked to be `req_` and 24 letters or digits: never a text to relay.
     const support = error.requestId
         ? ` Mesub request id ${error.requestId}: quote it to Mesub support if the merchant asks them about this call.`
@@ -223,12 +242,7 @@ function refused(error: Refused, tool: string, asked: Asked = {}): CallToolResul
  * trace, a header, a URL or the token: anything that is not a Mesub error is
  * logged here and answered with one fixed sentence.
  */
-export function failure(
-    error: unknown,
-    tool: string,
-    logger: Logger,
-    asked: Asked = {},
-): CallToolResult {
+export function failure(error: unknown, tool: string, logger: Logger): CallToolResult {
     if (error instanceof ToolRefusal) {
         const { code, message } = error;
         return refused(
@@ -274,7 +288,6 @@ export function failure(
                 ...(code === 'wallet_required' && { walletUrl }),
             },
             tool,
-            asked,
         );
     }
 
