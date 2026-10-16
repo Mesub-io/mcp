@@ -28,7 +28,9 @@ export const updateWebhook = defineTool({
                     'invented name, `localhost` or a private address. Left out: unchanged.',
             ).optional(),
             events: webhookEvents(
-                'The events it takes from now on: this list replaces the current one. Left out: unchanged.',
+                'The events it takes from now on: this list replaces the current one. Left out: ' +
+                    'unchanged. `subscription.access_granted` and `subscription.access_revoked` ' +
+                    'say whether a customer has access; Mesub does not send them yet.',
             ).optional(),
             enabled: z
                 .boolean()

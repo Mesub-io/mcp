@@ -114,6 +114,8 @@ export const WEBHOOK_EVENTS = [
     'subscription.resumed',
     'subscription.ended',
     'subscription.expired',
+    'subscription.access_granted',
+    'subscription.access_revoked',
 ] as const;
 
 /** How long a text somebody else wrote may be before it is cut. */

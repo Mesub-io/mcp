@@ -10,14 +10,17 @@ export const createWebhook = defineTool({
     title: 'Create a webhook endpoint',
     description:
         "Register a URL of the merchant's server for Mesub to post events to: a " +
-        'subscription created, renewed, failing to pay, stopped, cancelled or ended. Use it ' +
+        'subscription created, renewed, failing to pay, stopped, cancelled or ended, and ' +
+        'access granted or revoked. Use it ' +
         'when wiring a server to Mesub. From then on Mesub sends the chosen events of ' +
         "every subscriber of the project to that URL, with subscribers' identifiers in " +
         'them: create one only for a URL the merchant gave and owns. The URL must be ' +
         'https and its host must resolve publicly: a made-up or local address is refused ' +
         'by Mesub. Nothing is posted to it now. Each post is one event: `id` (the ' +
         "event's, the same on every retry), `type`, `created_at`, `network`, " +
-        '`api_version`, `data` (the subscription right after the event) and `detail` ' +
+        "`api_version`, `sequence` (its place among the subscription's events: apply them " +
+        'in that order, deliveries may arrive in any), `data` (the subscription right ' +
+        'after the event) and `detail` ' +
         '(what the event is about), signed the Standard Webhooks way; its `webhook-id` ' +
         'header names the delivery. The result holds the ' +
         "endpoint's signing secret in clear, so it lands in this conversation: write it to " +
@@ -29,7 +32,11 @@ export const createWebhook = defineTool({
             'Where Mesub posts: an https URL whose host resolves publicly, 2048 characters ' +
                 'at most. Never an invented name, `localhost` or a private address.',
         ),
-        events: webhookEvents('The events to send, at least one, none twice.'),
+        events: webhookEvents(
+            'The events to send, at least one, none twice. `subscription.access_granted` and ' +
+                '`subscription.access_revoked` are the two that say whether a customer has ' +
+                'access, sent only when it changes; Mesub does not send them yet.',
+        ),
         enabled: z
             .boolean()
             .optional()
