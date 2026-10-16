@@ -310,7 +310,7 @@ export const preparePlan = defineTool({
                         'read as the end of that day in UTC (23:59:59), or an instant with its ' +
                         'zone, such as 2027-01-31T18:00:00Z or 2027-01-31T18:00:00+02:00. A ' +
                         'time without a zone is refused, and seconds are whole. Mesub refuses ' +
-                        'an end less than one period away, or more than 100 years away.',
+                        'an end less than one period and five minutes away, or more than 100 years away.',
                 ),
         })
         .refine((args) => toSmallestUnit(args.price, TOKENS[args.token].decimals) !== null, {

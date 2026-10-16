@@ -866,8 +866,8 @@ describe('prepare_plan', () => {
             [
                 'end_date_too_soon',
                 'The plan must run one period at least before it ends.',
-                'Nothing was prepared. The end is less than one period of the plan away: ask ' +
-                    'the merchant for a later date, or whether the plan should have no end.',
+                'Nothing was prepared. The end is less than one period of the plan and five ' +
+                    'minutes away: ask the merchant for a later date, or whether the plan should have no end.',
             ],
             [
                 'end_date_too_far',

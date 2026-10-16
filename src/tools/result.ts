@@ -54,7 +54,8 @@ function prepareAdvice({ code, status, walletUrl }: Refused): string | undefined
     }
     if (code === 'end_date_too_soon') {
         return (
-            'Nothing was prepared. The end is less than one period of the plan away: ask the ' +
+            'Nothing was prepared. The end is less than one period of the plan and five ' +
+            'minutes away: ask the ' +
             'merchant for a later date, or whether the plan should have no end.'
         );
     }
