@@ -99,6 +99,17 @@
     }
   },
   {
+    "id": "subscriber-by-external-id",
+    "kind": "choose",
+    "prompt": "My app calls this customer user_8812. Show me their subscription and what is due next.",
+    "expect": {
+      "calls": ["list_subscriptions"],
+      "never": ["list_events", "retry_charge"],
+      "ask_first": false,
+      "says": "Searches with q user_8812 (an external id), or asks check_access by external_id, and reports the row whose external_id matches, with its status and due_at. Never asks for or shows an email."
+    }
+  },
+  {
     "id": "access-by-external-id",
     "kind": "choose",
     "prompt": "Why was user 42 locked out of my app?",
@@ -132,6 +143,17 @@
     }
   },
   {
+    "id": "events-find-partial-signature",
+    "kind": "choose",
+    "prompt": "A customer sent me a transaction that starts with 3z5CYg2nNjLb. Which charge is it?",
+    "expect": {
+      "calls": ["list_events", "list_events"],
+      "never": ["list_subscriptions", "get_subscription", "check_access"],
+      "ask_first": false,
+      "says": "Passes the start of the signature as q, then reads the day that matches with day and q. Says a start shorter than 8 characters matches no signature, and never asks for the whole signature first."
+    }
+  },
+  {
     "id": "upcoming-at-risk",
     "kind": "choose",
     "prompt": "Which renewals are at risk this week?",
@@ -139,7 +161,18 @@
       "calls": ["list_upcoming_charges"],
       "never": ["list_events", "get_overview"],
       "ask_first": false,
-      "says": "Calls with days 7 and reports the charges whose renewal_issue is set, and why."
+      "says": "Calls with days 7 and reports the lines whose expected_to_fail is true, and why: renewal_issue on a charge, late_reason APPROVAL_REVOKED or AUTHORITY_CLOSED on a retry, blocked_reason on a block."
+    }
+  },
+  {
+    "id": "upcoming-at-risk-blocked-and-revoked",
+    "kind": "choose",
+    "prompt": "Which payments due this week are going to fail, and what can I do about each?",
+    "expect": {
+      "calls": ["list_upcoming_charges"],
+      "never": ["retry_charge", "update_retry_policy", "list_events"],
+      "ask_first": false,
+      "says": "Counts as going to fail a charge under a block (blocked_reason receiver_account_missing: the merchant opens the token account of the receiving wallet) and a retry whose late_reason is APPROVAL_REVOKED (the subscriber approves again from their wallet; topping up does nothing), beside any renewal_issue. Does not count a retry for INSUFFICIENT_BALANCE as sure to fail. Retries nothing."
     }
   },
   {
