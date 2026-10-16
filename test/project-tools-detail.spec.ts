@@ -372,10 +372,12 @@ describe('the project tools, in detail', () => {
             });
             expect(plan.attempts[0]).toMatchObject({
                 subscription_id: SUBSCRIPTION_ID,
+                external_id: EXTERNAL_ID,
                 outcome: 'REJECTED',
                 retry_number: 1,
                 retries_allowed: 3,
             });
+            expect(plan.attempts[1].external_id).toBeNull();
             expect(sentence(result)).toMatch(
                 /^The plan is ACTIVE, with 12 subscriptions and 40 paid charges out of 42\./,
             );
@@ -1931,6 +1933,35 @@ describe('the project tools, in detail', () => {
                     status: 409,
                     retryable: false,
                 });
+                expect(api.projectCalls()).toHaveLength(1);
+            },
+        );
+
+        // Mesub reads the wallet first (backend #516): the agent is told not to try again.
+        it.each([
+            [
+                'retry_cannot_succeed',
+                'The wallet no longer approves this subscription, or its token account is frozen, so a retry would fail.',
+                /no retry can succeed while this lasts\. Tell the merchant why, as the message says, and do not call `retry_charge` on this subscription again\./,
+            ],
+            [
+                'insufficient_balance',
+                'You need 9.99 to pay the missed period, and this wallet holds 1.',
+                /the wallet holds less than the period, as the message says\. A retry can succeed only once the subscriber adds funds/,
+            ],
+        ])(
+            'retry_charge says plainly why a %s retry was refused',
+            async (code, message, advice) => {
+                api.answer(409, refusal(409, code, message));
+
+                const result = await retry();
+
+                expect(text(result)).toMatch(
+                    new RegExp(
+                        `^Mesub error ${code}: ${message.replace(/[.()]/g, '\\$&')} Nothing was charged and no retry was spent`,
+                    ),
+                );
+                expect(text(result)).toMatch(advice);
                 expect(api.projectCalls()).toHaveLength(1);
             },
         );

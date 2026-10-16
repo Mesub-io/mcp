@@ -199,8 +199,8 @@ export const planDetail = {
     ],
     nextPull: { dueAt: LATER, amount: '9990000', manual: false },
     attempts: [
-        { ...attempt, subscriptionId: SUBSCRIPTION_ID },
-        { ...paidAttempt, subscriptionId: SUBSCRIPTION_ID },
+        { ...attempt, subscriptionId: SUBSCRIPTION_ID, externalId: EXTERNAL_ID },
+        { ...paidAttempt, subscriptionId: SUBSCRIPTION_ID, externalId: null },
     ],
 };
 

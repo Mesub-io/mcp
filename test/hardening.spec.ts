@@ -514,8 +514,9 @@ describe('hardening', () => {
             const test = caseOf('send_test_webhook');
             const tested = text(await call(test.tool, test.args));
             expect(tested).toBe(
-                'Mesub error rate_limited: Too many requests. Mesub sends at most 5 test ' +
-                    'deliveries a minute on one connection: wait 32 seconds, then call again.',
+                'Mesub error rate_limited: Too many requests. Mesub takes at most 5 test ' +
+                    'sends a minute on one connection, refused ones included: wait 32 seconds, ' +
+                    'then call again.',
             );
             expect(`${plain}${tested}`).not.toContain('Throttler');
         });

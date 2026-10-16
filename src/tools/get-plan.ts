@@ -91,7 +91,7 @@ export const getPlan = defineTool({
             })
             .nullable(),
         attempts: z
-            .array(attemptOutput.extend({ subscription_id: z.string() }))
+            .array(attemptOutput.extend({ subscription_id: z.string(), external_id: externalId }))
             .describe(`The latest charge attempts, newest first, ${MAX_NESTED_ITEMS} at most.`),
     }),
     annotations: {
@@ -130,6 +130,7 @@ export const getPlan = defineTool({
                 attempts: attempts.map((attempt) => ({
                     ...attemptOut(attempt, plan.decimals, plan),
                     subscription_id: attempt.subscriptionId,
+                    external_id: attempt.externalId,
                 })),
             },
             text:
