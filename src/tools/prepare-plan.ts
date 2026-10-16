@@ -7,7 +7,15 @@ import { toSmallestUnit } from './money.js';
 import { ToolRefusal } from './result.js';
 import { planOut, planOutput } from './shapes.js';
 import { defineTool } from './tool.js';
-import { TOKEN_SYMBOLS, TOKENS } from './tokens.js';
+import {
+    forgetNetwork,
+    learnNetwork,
+    mintsToTry,
+    networkLearned,
+    TOKEN_SYMBOLS,
+    TOKENS,
+    tokensHere,
+} from './tokens.js';
 import {
     MAX_RETRY_ATTEMPTS,
     MAX_RETRY_DELAY_MINUTES,
@@ -180,7 +188,9 @@ export const preparePlan = defineTool({
                 .enum(TOKEN_SYMBOLS)
                 .describe(
                     `The token subscribers pay in: ${TOKEN_SYMBOLS.join(', ')}. Its symbol, ` +
-                        'never an address. Ask the merchant when they did not name one.',
+                        'never an address. Ask the merchant when they did not name one. Which ' +
+                        'ones this Mesub takes depends on its network: on a test network, USDC ' +
+                        'only.',
                 ),
             price: z
                 .string()
@@ -371,14 +381,24 @@ export const preparePlan = defineTool({
         let sent = '';
         let refusal: MesubApiError | undefined;
         // One address of the token per network Mesub runs on, and the API takes
-        // one: it refuses the others before it writes anything. Any other
-        // failure ends the call, since the plan may then exist.
-        for (const mint of token.mints) {
+        // one: it refuses the others before it writes anything. Once an address
+        // was taken, only that network's are sent. Any other failure ends the
+        // call, since the plan may then exist.
+        const mints = mintsToTry(args.token);
+        if (mints.length === 0) {
+            throw new ToolRefusal(
+                'mint_not_allowed',
+                `This Mesub runs on a test network, where an agent prepares plans in ` +
+                    `${tokensHere().join(', ')} only.`,
+            );
+        }
+        const known = networkLearned() !== null;
+        for (const candidate of mints) {
             try {
                 plan = await mesub.preparePlan(
                     {
                         name: args.name,
-                        mint,
+                        mint: candidate.mint,
                         amount,
                         periodHours: args.period_hours,
                         description: args.description,
@@ -391,7 +411,8 @@ export const preparePlan = defineTool({
                     },
                     signal,
                 );
-                sent = mint;
+                sent = candidate.mint;
+                learnNetwork(candidate);
                 break;
             } catch (error) {
                 if (!(error instanceof MesubApiError) || error.code !== 'mint_not_allowed') {
@@ -401,6 +422,8 @@ export const preparePlan = defineTool({
             }
         }
         if (plan === undefined) {
+            // The network learned took none: try them all next time.
+            if (known) forgetNetwork();
             throw refusal ?? new ToolRefusal('internal_error', 'No address for that token.');
         }
 
