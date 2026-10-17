@@ -94,8 +94,11 @@ jobs:
         run: flyctl deploy --remote-only --no-public-ips
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      - name: Show the app logs
+      # The release and the Machines' state, never the app's logs: this
+      # repository is public, and so are its runs. The logs are read with
+      # `fly logs`, by someone who may.
+      - name: Show the release state
         if: failure()
-        run: flyctl logs --no-tail | tail -n 40
+        run: flyctl status && flyctl releases | head -n 5
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
