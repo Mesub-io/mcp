@@ -14,7 +14,7 @@ It is a thin layer over the Mesub HTTP API. A tool is one call to that API and a
 
 ## Status
 
-**Not hosted yet.** Mesub will host this server: there is nothing to install and nothing to run on the merchant's side. Until it is, no address works, and the one written below is a placeholder.
+**Hosted on dev only**, against the dev API on devnet: `https://mcp-dev.mesub.io/mcp`. Mesub hosts it: there is nothing to install and nothing to run on the merchant's side. The production address written below is not served yet.
 
 What exists in this repository: the transport, authorization, the client for the Mesub API, and 23 tools. What it is tested against, on every push, is a stand-in for the Mesub API.
 
@@ -239,6 +239,10 @@ Every header below is believed only because one proxy writes it over whatever th
 | Behind something else, or nothing                                    | `CLIENT_IP_HEADER=none`                                                           | The socket peer. Behind a proxy that is the proxy, for everybody: all callers take turns as one address. Nobody is refused for it, and a line at start says so.                              |
 
 `X-Forwarded-For`, `Forwarded` and `X-Real-IP` are never read: a client writes its own. An IPv6 address counts by its /64. Once `MCP_PUBLIC_URL` is not on this machine the variable must be set, `none` included: nothing is assumed about what stands in front.
+
+## Deploy
+
+Fly, from the `Dockerfile`, with no public IP: a Cloudflare Tunnel brings `mcp-dev.mesub.io` to `http://mesub-mcp-dev.internal:3000`. `fly.toml` holds the public values of the dev app, `mesub-mcp-dev`; its one secret is `MESUB_SERVICE_SECRET`, the dev API's `MCP_SERVICE_SECRET`. Every push to `main` deploys it once the checks pass (job `deploy-dev`, token in the `dev` environment).
 
 ## Run it locally
 
