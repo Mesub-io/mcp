@@ -14,7 +14,7 @@ It is a thin layer over the Mesub HTTP API. A tool is one call to that API and a
 
 ## Status
 
-**Hosted on dev only**, against the dev API on devnet: `https://mcp-dev.mesub.io/mcp`. Mesub hosts it: there is nothing to install and nothing to run on the merchant's side. The production address written below is not served yet.
+**Not hosted yet** for merchants: the address below is a placeholder until production is served. Mesub hosts it: there is nothing to install and nothing to run on the merchant's side. A dev server runs against the dev API, for the team's tests: `https://mcp-dev.mesub.io/mcp`.
 
 What exists in this repository: the transport, authorization, the client for the Mesub API, and 23 tools. What it is tested against, on every push, is a stand-in for the Mesub API.
 
