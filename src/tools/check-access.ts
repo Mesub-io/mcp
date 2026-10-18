@@ -61,7 +61,13 @@ const answerOutput = z.object({
         ),
     next_charge_at: z.string().nullable(),
     next_retry_at: z.string().nullable(),
-    retry_deadline: z.string().nullable(),
+    retry_deadline: z
+        .string()
+        .nullable()
+        .describe(
+            'Free only: the last moment a retry is taken, two minutes before the missed period ' +
+                'ends. The deadline to quote; the subscription tools call it `retry_closes_at`.',
+        ),
     attempts: z
         .array(
             z.object({
