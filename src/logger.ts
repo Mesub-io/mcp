@@ -16,6 +16,11 @@ export interface LoggerOptions {
     write?: (line: string) => void;
     /** Scrubbed from every line as written, wherever they sit: the service secret. */
     secrets?: readonly Secret[];
+    /**
+     * Given every error line, as written: redacted. An error line is always
+     * ours (a refusal answered on purpose is info): it is what Sentry gets (#54).
+     */
+    report?: (message: string, fields: LogFields) => void;
 }
 
 const REDACTED = '[redacted]';
@@ -91,6 +96,7 @@ export function createLogger(options: LoggerOptions): Logger {
     const log = (level: Exclude<LogLevel, 'silent'>, message: string, fields?: LogFields) => {
         if (RANK[level] < floor) return;
         const safe = redact(fields ?? {}) as LogFields;
+        if (level === 'error') options.report?.(redact(message) as string, safe);
         write(
             JSON.stringify({
                 ...safe,

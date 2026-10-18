@@ -29,6 +29,9 @@ primary_region = "cdg"
   PORT = "3000"
   # Behind the tunnel, Cloudflare writes the client here.
   CLIENT_IP_HEADER = "cf-connecting-ip"
+  # Errors go to Sentry's mcp project under this environment (#54). Its DSN is
+  # a Fly secret: this repository is public, and a DSN lets anyone send to it.
+  SENTRY_ENVIRONMENT = "devnet"
 
 [http_service]
   internal_port = 3000

@@ -4,6 +4,7 @@ import * as z from 'zod';
 
 import { CLIENT_IP_HEADERS, proxyList, type ClientAddressSource } from './client-address.js';
 import { Secret } from './secret.js';
+import { VERSION } from './version.js';
 
 export const LOG_LEVELS = ['debug', 'info', 'warn', 'error', 'silent'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -27,6 +28,17 @@ export interface Config {
     /** Where the address a request counts as is read. */
     clientAddress: ClientAddressSource;
     logLevel: LogLevel;
+    /** Where unexpected errors are reported (#54). Unset without SENTRY_DSN: nothing is sent. */
+    errorReports?: ErrorReportsConfig;
+}
+
+export interface ErrorReportsConfig {
+    /** A Sentry project's DSN. */
+    dsn: string;
+    /** Which deployment sent it: `devnet` or `mainnet-beta`, like the API's. */
+    environment: string;
+    /** The commit the image was built from, or the version without one. */
+    release: string;
 }
 
 /** Thrown at start, with one line per variable that does not fit. */
@@ -147,6 +159,23 @@ const schema = z.object({
     LOG_LEVEL: z
         .enum(LOG_LEVELS, { error: `must be one of ${LOG_LEVELS.join(', ')}` })
         .default('info'),
+    SENTRY_DSN: z
+        .string()
+        .regex(/^https:\/\/[^\s@/]+@[^\s/]+\/\d+$/, {
+            error: 'must be a Sentry DSN: https://<key>@<host>/<project id>',
+        })
+        .optional(),
+    SENTRY_ENVIRONMENT: z
+        .string()
+        .regex(/^[a-z0-9-]{1,64}$/, {
+            error: 'must be a short lowercase name, devnet or mainnet-beta',
+        })
+        .default('local'),
+    // Empty when the image was built without one: the version stands in.
+    SENTRY_RELEASE: z
+        .string()
+        .optional()
+        .transform((value) => value || undefined),
 });
 
 /**
@@ -239,6 +268,13 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
             trustedProxies,
         },
         logLevel: data.LOG_LEVEL,
+        ...(data.SENTRY_DSN !== undefined && {
+            errorReports: {
+                dsn: data.SENTRY_DSN,
+                environment: data.SENTRY_ENVIRONMENT,
+                release: data.SENTRY_RELEASE ?? VERSION,
+            },
+        }),
     };
 }
 

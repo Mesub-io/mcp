@@ -1,4 +1,5 @@
 import { ConfigError, takeConfig } from './config.js';
+import { startErrorReports } from './error-reports.js';
 import { createLogger } from './logger.js';
 import { start } from './start.js';
 
@@ -13,12 +14,21 @@ async function main(): Promise<void> {
         process.exit(1);
     }
 
-    const logger = createLogger({ level: config.logLevel, secrets: [config.serviceSecret] });
+    // Started before anything can fail, so a crash at start is reported too.
+    const reports = startErrorReports(config.errorReports, [config.serviceSecret]);
+    const logger = createLogger({
+        level: config.logLevel,
+        secrets: [config.serviceSecret],
+        ...(reports && { report: reports.report }),
+    });
     const server = await start({ config, logger });
 
     const shutdown = (signal: string) => {
         logger.info('shutting down', { signal });
-        void server.stop().then(() => process.exit(0));
+        void server
+            .stop()
+            .then(() => reports?.flush())
+            .then(() => process.exit(0));
     };
     process.once('SIGTERM', () => shutdown('SIGTERM'));
     process.once('SIGINT', () => shutdown('SIGINT'));

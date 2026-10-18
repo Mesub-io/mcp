@@ -91,7 +91,7 @@ jobs:
       # http_service. The /health check fails this step when the release
       # cannot answer.
       - name: Deploy to mesub-mcp-dev
-        run: flyctl deploy --remote-only --no-public-ips
+        run: flyctl deploy --remote-only --no-public-ips --build-arg SENTRY_RELEASE=${{ github.sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       # The release and the Machines' state, never the app's logs: this
