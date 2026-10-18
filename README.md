@@ -305,6 +305,9 @@ Read once from the environment, and checked at start: a value that does not fit 
 | `CLIENT_IP_HEADER`          | none on this machine      | `fly-client-ip`, `cf-connecting-ip` or `none`. Required once the public URL is not on this machine. See [The client address](#the-client-address).                                      |
 | `TRUSTED_PROXY_CIDRS`       | none                      | With `cf-connecting-ip` only: the ranges of the edge network in front of the platform proxy, separated by commas.                                                                       |
 | `LOG_LEVEL`                 | `info`                    | `debug`, `info`, `warn`, `error` or `silent`.                                                                                                                                           |
+| `SENTRY_DSN`                | none                      | A Sentry project's DSN: every error line of the log, redacted as written, is reported there. Unset, nothing is sent. A refusal answered on purpose is never an error line.              |
+| `SENTRY_ENVIRONMENT`        | `local`                   | Which deployment reports, named as the Mesub API names its network.                                                                                                                     |
+| `SENTRY_RELEASE`            | the version               | The commit the image was built from. The deploy job gives it to the image.                                                                                                              |
 
 At start the server writes a line named `resource` with the resource it takes tokens for. It must be the API's `MCP_RESOURCE_URL`, character for character: if it is not, every request is answered 503 and the logs say `audience_mismatch` with both values.
 

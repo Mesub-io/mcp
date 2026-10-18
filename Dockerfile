@@ -14,6 +14,10 @@ RUN pnpm build && CI=true pnpm prune --prod --ignore-scripts
 # Run: Node, the bundle and its dependencies. No package manager, no sources.
 FROM node:24-alpine
 ENV NODE_ENV=production
+# The commit this image is, for the error reports (#54). Given by the deploy
+# job; empty on a local build, and the reports then name the version.
+ARG SENTRY_RELEASE=""
+ENV SENTRY_RELEASE=$SENTRY_RELEASE
 # All interfaces: in a container, loopback is the container's own.
 ENV HOST=0.0.0.0
 ENV PORT=3000
