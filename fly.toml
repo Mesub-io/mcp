@@ -1,0 +1,51 @@
+# The dev MCP server, mcp-dev.mesub.io: agents connect through it to a project
+# on the dev API (devnet). Like the API it has no public IP: the Cloudflare
+# Tunnel's hostname mcp-dev.mesub.io points at
+# http://mesub-mcp-dev.internal:3000, over Fly's private network.
+#
+# Public values only: the service secret it shares with the API is a Fly
+# secret (MESUB_SERVICE_SECRET), never written here.
+app = "mesub-mcp-dev"
+primary_region = "cdg"
+
+[build]
+
+[deploy]
+  # The new release boots beside the running one and takes the traffic once
+  # its check passes: a build that cannot serve never replaces one that can.
+  strategy = "bluegreen"
+
+[env]
+  # The tools and the token checks go to the dev API, through its public
+  # name: https, like any client of it.
+  MESUB_API_URL = "https://api-dev.mesub.io"
+  # The issuer the dev API names in its metadata, character for character.
+  MESUB_ISSUER_URL = "https://api-dev.mesub.io"
+  # <this>/mcp is the audience of every token: the dev API's MCP_RESOURCE_URL.
+  MCP_PUBLIC_URL = "https://mcp-dev.mesub.io"
+  # Every address, IPv6 included: the tunnel comes over Fly's private network,
+  # which is IPv6 only. The image's 0.0.0.0 would never answer it.
+  HOST = "::"
+  PORT = "3000"
+  # Behind the tunnel, Cloudflare writes the client here.
+  CLIENT_IP_HEADER = "cf-connecting-ip"
+
+[http_service]
+  internal_port = 3000
+  force_https = false
+  # Always on. The tunnel reaches the app over .internal, which does not wake
+  # a stopped Machine: one stopped here would never start again by itself.
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

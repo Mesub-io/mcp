@@ -6,9 +6,11 @@ on:
   push:
     branches: [main]
 
+# A new push cancels the run it supersedes, except on main, where a run
+# carries a deploy that must not stop halfway.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -59,3 +61,44 @@ jobs:
       # The committed index must be what its own docs commit builds: it fetches
       # that commit of Mesub-io/docs, which is public, and needs no dependency.
       - run: node scripts/build-docs-index.mjs --check
+
+  # main only, once the checks pass: mcp-dev.mesub.io. A GitHub-hosted runner,
+  # which starts empty every time: nothing a branch ran is left beside the
+  # token.
+  deploy-dev:
+    needs: [quality, docs-index]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The environment holds FLY_API_TOKEN, scoped to mesub-mcp-dev, and
+    # releases it to main only.
+    environment:
+      name: dev
+      url: https://mcp-dev.mesub.io
+    # Deploys queue rather than cancel each other.
+    concurrency:
+      group: deploy-mesub-mcp-dev
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: superfly/flyctl-actions/setup-flyctl@fc53c09e1bc3be6f54706524e3b82c4f462f77be # 1.5
+        with:
+          version: 0.4.104
+      # --no-public-ips: reached only through the tunnel, and a plain deploy
+      # hands the app a public IP back because fly.toml declares an
+      # http_service. The /health check fails this step when the release
+      # cannot answer.
+      - name: Deploy to mesub-mcp-dev
+        run: flyctl deploy --remote-only --no-public-ips
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      # The release and the Machines' state, never the app's logs: this
+      # repository is public, and so are its runs. The logs are read with
+      # `fly logs`, by someone who may.
+      - name: Show the release state
+        if: failure()
+        run: flyctl status && flyctl releases | head -n 5
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
