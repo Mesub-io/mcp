@@ -244,6 +244,8 @@ Every header below is believed only because one proxy writes it over whatever th
 
 Fly, from the `Dockerfile`, with no public IP: a Cloudflare Tunnel brings `mcp-dev.mesub.io` to `http://mesub-mcp-dev.internal:3000`. `fly.toml` holds the public values of the dev app, `mesub-mcp-dev`; its one secret is `MESUB_SERVICE_SECRET`, the dev API's `MCP_SERVICE_SECRET`. Every push to `main` deploys it once the checks pass (job `deploy-dev`, token in the `dev` environment).
 
+Production, `mesub-mcp-prod` in its own Fly org, is `fly.prod.toml` (`mcp.mesub.io`, the production API). A version ships in three acts: push a `v*` tag (the checks run, nothing deploys), run **CI** → **Run workflow** on that tag, then approve the `prod` environment, which takes `v*` tags only and holds its token (job `deploy-prod`). Not deployed yet.
+
 ## Run it locally
 
 Node 22 or later, and pnpm. The server does not start without `MESUB_SERVICE_SECRET` and `MESUB_ISSUER_URL`.

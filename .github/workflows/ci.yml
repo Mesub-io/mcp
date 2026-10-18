@@ -5,12 +5,16 @@ on:
   pull_request:
   push:
     branches: [main]
+    # A version tag is checked like main; it deploys nothing by itself.
+    tags: ['v*']
+  # Production deploys from here only (#59): this button, run on a v* tag.
+  workflow_dispatch:
 
-# A new push cancels the run it supersedes, except on main, where a run
-# carries a deploy that must not stop halfway.
+# A new push cancels the run it supersedes, except on main and on a tag, where
+# a run may carry a deploy that must not stop halfway.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: read
@@ -100,5 +104,48 @@ jobs:
       - name: Show the release state
         if: failure()
         run: flyctl status && flyctl releases | head -n 5
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-prod:
+    needs: [quality, docs-index]
+    # Two acts on purpose (#59): a v* tag pushed, then this workflow run by
+    # hand from Actions on that tag, then approved in the prod environment,
+    # which takes v* tags only and holds the token. Never main.
+    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: prod
+      url: https://mcp.mesub.io
+    concurrency:
+      group: deploy-mesub-mcp-prod
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          # The whole history and every branch, origin/main included, for the
+          # check below: no fetch after, as the job keeps no credentials.
+          fetch-depth: 0
+
+      # Only a version of main ships: a tag pushed on another branch is refused
+      # before any secret is read. A guard against a mistake, not against
+      # someone with write access, who could edit this step on their tag:
+      # that one needs the paid rules (required reviewers, tag rulesets).
+      - name: Check the tag is on main
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "$GITHUB_REF_NAME is not on main" >&2; exit 1; }
+      - uses: superfly/flyctl-actions/setup-flyctl@fc53c09e1bc3be6f54706524e3b82c4f462f77be # 1.5
+        with:
+          version: 0.4.104
+      - name: Deploy to mesub-mcp-prod
+        run: flyctl deploy -c fly.prod.toml --remote-only --no-public-ips --build-arg SENTRY_RELEASE=${{ github.sha }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      # The release state, never the app's logs: this repository's runs are public.
+      - name: Show the release state
+        if: failure()
+        run: flyctl status -c fly.prod.toml && flyctl releases -c fly.prod.toml | head -n 5
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
