@@ -394,8 +394,14 @@ export const subscriptionRowOutput = z.object({
     retry_available_at: nullableDate.describe(
         'When `retry_charge` may be called. In the past: now. Null: it would be refused.',
     ),
-    retry_deadline: nullableDate,
-    retry_closes_at: nullableDate,
+    retry_deadline: nullableDate.describe(
+        'Free only: the end of the missed period, when a late subscription stops. Not the ' +
+            'deadline to quote: retries close two minutes before it, at `retry_closes_at`.',
+    ),
+    retry_closes_at: nullableDate.describe(
+        'Free only: the last moment a retry is taken, by `retry_charge` or by the subscriber. ' +
+            'Quote this one as the deadline to pay; `check_access` calls it `retry_deadline`.',
+    ),
     last_paid_at: nullableDate,
     confirmed_at: nullableDate,
     amount,
