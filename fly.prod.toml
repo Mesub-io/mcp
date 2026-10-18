@@ -1,0 +1,57 @@
+# The production MCP server, mcp.mesub.io (#59): agents connect through it to a
+# project on the production API (mainnet), in the mesub-prod Fly org. Like the
+# API it has no public IP: the Cloudflare Tunnel's hostname mcp.mesub.io points
+# at http://mesub-mcp-prod.internal:3000, over that org's private network.
+#
+# Deployed with `-c fly.prod.toml`, by the deploy-prod job only (a v* tag,
+# started by hand, approved in the prod environment). fly.toml stays dev's.
+#
+# Public values only: the service secret it shares with the API is a Fly
+# secret (MESUB_SERVICE_SECRET), never written here.
+app = "mesub-mcp-prod"
+primary_region = "cdg"
+
+[build]
+
+[deploy]
+  # The new release boots beside the running one and takes the traffic once
+  # its check passes: a build that cannot serve never replaces one that can.
+  strategy = "bluegreen"
+
+[env]
+  # The tools and the token checks go to the production API, through its public
+  # name: https, like any client of it.
+  MESUB_API_URL = "https://api.mesub.io"
+  # The issuer the production API names in its metadata, character for character.
+  MESUB_ISSUER_URL = "https://api.mesub.io"
+  # <this>/mcp is the audience of every token: the production API's MCP_RESOURCE_URL.
+  MCP_PUBLIC_URL = "https://mcp.mesub.io"
+  # Every address, IPv6 included: the tunnel comes over Fly's private network,
+  # which is IPv6 only. The image's 0.0.0.0 would never answer it.
+  HOST = "::"
+  PORT = "3000"
+  # Behind the tunnel, Cloudflare writes the client here.
+  CLIENT_IP_HEADER = "cf-connecting-ip"
+  # Errors go to Sentry's mcp project under this environment (#54). Its DSN is
+  # a Fly secret: this repository is public, and a DSN lets anyone send to it.
+  SENTRY_ENVIRONMENT = "mainnet-beta"
+
+[http_service]
+  internal_port = 3000
+  force_https = false
+  # Always on. The tunnel reaches the app over .internal, which does not wake
+  # a stopped Machine: one stopped here would never start again by itself.
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
