@@ -14,20 +14,20 @@ It is a thin layer over the Mesub HTTP API. A tool is one call to that API and a
 
 ## Status
 
-**Not hosted yet** for merchants: the address below is a placeholder until production is served. Mesub hosts it: there is nothing to install and nothing to run on the merchant's side. A dev server runs against the dev API, for the team's tests: `https://mcp-dev.mesub.io/mcp`.
+Hosted by Mesub at `https://mcp.mesub.io/mcp`, against the production API: there is nothing to install and nothing to run on the merchant's side. A dev server runs against the dev API, for the team's tests: `https://mcp-dev.mesub.io/mcp`.
 
 What exists in this repository: the transport, authorization, the client for the Mesub API, and 23 tools. What it is tested against, on every push, is a stand-in for the Mesub API.
 
 ## Connect
 
-For a merchant, once the server is hosted:
+For a merchant:
 
 1. Add the server's address to your AI tool, as a remote MCP server.
 2. The tool opens a Mesub page in your browser. Sign in to the dashboard.
 3. Choose one project. Nothing is chosen for you.
 4. Read what the page lists, then authorize.
 
-The address, a PLACEHOLDER until the server is hosted:
+The address:
 
 ```text
 https://mcp.mesub.io/mcp
@@ -244,7 +244,7 @@ Every header below is believed only because one proxy writes it over whatever th
 
 Fly, from the `Dockerfile`, with no public IP: a Cloudflare Tunnel brings `mcp-dev.mesub.io` to `http://mesub-mcp-dev.internal:3000`. `fly.toml` holds the public values of the dev app, `mesub-mcp-dev`; its one secret is `MESUB_SERVICE_SECRET`, the dev API's `MCP_SERVICE_SECRET`. Every push to `main` deploys it once the checks pass (job `deploy-dev`, token in the `dev` environment).
 
-Production, `mesub-mcp-prod` in its own Fly org, is `fly.prod.toml` (`mcp.mesub.io`, the production API). A version ships in three acts: push a `v*` tag (the checks run, nothing deploys), run **CI** → **Run workflow** on that tag, then approve the `prod` environment, which takes `v*` tags only and holds its token (job `deploy-prod`). Not deployed yet.
+Production, `mesub-mcp-prod` in its own Fly org, is `fly.prod.toml` (`mcp.mesub.io`, the production API). A version ships in three acts: push a `v*` tag (the checks run, nothing deploys), run **CI** → **Run workflow** on that tag, then approve the `prod` environment, which takes `v*` tags only and holds its token (job `deploy-prod`).
 
 ## Run it locally
 

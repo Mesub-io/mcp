@@ -32,7 +32,7 @@ export const updateWebhook = defineTool({
                     'unchanged. `subscription.access_granted` and `subscription.access_revoked` ' +
                     'say whether a customer has access; `subscription.paused` / ' +
                     '`subscription.unpaused` tell a seat parked over the tier cap or brought ' +
-                    'back. Mesub does not send these four yet.',
+                    'back.',
             ).optional(),
             enabled: z
                 .boolean()
