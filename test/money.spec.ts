@@ -2,7 +2,7 @@ import { displayAmount, toSmallestUnit } from '../src/tools/money.js';
 import { periodInWords } from '../src/tools/period.js';
 import { isLink } from '../src/mesub/link.js';
 import { snake } from '../src/tools/snake.js';
-import { clip, TRUNCATED } from '../src/text.js';
+import { clip, planEnd, TRUNCATED } from '../src/text.js';
 
 const MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
@@ -202,5 +202,32 @@ describe('isLink', () => {
         ]) {
             expect(isLink(link), String(link)).toBe(false);
         }
+    });
+});
+
+describe('planEnd', () => {
+    it.each([
+        [
+            'the end of a day, its last second',
+            '2026-10-20T23:59:59.000Z',
+            'Oct 20, 2026, 23:59 UTC',
+        ],
+        ['an afternoon', '2027-01-31T14:00:00.000Z', 'Jan 31, 2027, 14:00 UTC'],
+        ['a minute', '2026-12-01T09:07:00Z', 'Dec 1, 2026, 09:07 UTC'],
+        [
+            'an instant in another zone, in UTC',
+            '2026-10-21T01:30:00+02:00',
+            'Oct 20, 2026, 23:30 UTC',
+        ],
+    ])('writes %s with its time', (_, date, written) => {
+        expect(planEnd(date)).toBe(written);
+    });
+
+    it('drops the seconds, never rounds up to the next minute', () => {
+        expect(planEnd('2026-12-31T23:59:59.999Z')).toBe('Dec 31, 2026, 23:59 UTC');
+    });
+
+    it.each([null, '', 'soon', '2027-01-31'])('is null for %s', (date) => {
+        expect(planEnd(date)).toBeNull();
     });
 });

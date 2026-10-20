@@ -2,7 +2,7 @@ import * as z from 'zod';
 
 import { MesubApiError } from '../mesub/errors.js';
 import type { PreparedPlan } from '../mesub/schemas.js';
-import { DATA_NOTICE, quoted } from '../text.js';
+import { DATA_NOTICE, planEnd, quoted } from '../text.js';
 import { toSmallestUnit } from './money.js';
 import { ToolRefusal } from './result.js';
 import { planOut, planOutput } from './shapes.js';
@@ -87,8 +87,6 @@ function secondOf(date: string): number | null {
 }
 
 const iso = (second: number) => new Date(second * 1000).toISOString();
-/** "2027-01-31 23:59:59 UTC": written from the instant, never from the text that named it. */
-const utc = (second: number) => `${iso(second).slice(0, 10)} ${iso(second).slice(11, 19)} UTC`;
 
 /**
  * What of the plan Mesub answered is not what was asked, in a merchant's
@@ -341,8 +339,9 @@ export const preparePlan = defineTool({
         ),
     outputSchema: z.object({
         plan: planOutput.describe(
-            'The plan as Mesub holds it: PENDING, not on chain. Quote `amount_display` and ' +
-                '`period_display`. `destinations` and `ends_at` are what the merchant will sign.',
+            'The plan as Mesub holds it: PENDING, not on chain. Quote `amount_display`, ' +
+                '`period_display` and `ends_display`, the end with its time in UTC. ' +
+                '`destinations` and `ends_at` are what the merchant will sign.',
         ),
         sign_url: z
             .string()
@@ -466,12 +465,13 @@ export const preparePlan = defineTool({
                         'among the listed wallets later, never outside them. ') +
                   'That list is locked once the plan is signed and can never change.';
         // The checked answer's own end, which is the one asked for.
+        // Written from the instant, never from the text that named it.
         const ends = plan.endsAt === null ? null : secondOf(plan.endsAt);
         const until =
             ends === null
                 ? 'It has no end date: it runs until the merchant closes it.'
-                : `It ends on ${utc(ends)}: nobody has access after that, and the last period ` +
-                  'is charged in full.';
+                : `It ends on ${planEnd(iso(ends))}: nobody has access after that, and the last ` +
+                  'period is charged in full.';
 
         return {
             data: { plan: shown, sign_url: plan.signUrl, next_step: plan.nextStep },

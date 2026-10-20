@@ -18,7 +18,7 @@ import {
     type WebhookDelivery,
     type WebhookEndpoint,
 } from '../mesub/schemas.js';
-import { known } from '../text.js';
+import { known, planEnd } from '../text.js';
 import { capped, MAX_ATTEMPTS, MAX_EARLIER, MAX_EARLIER_ATTEMPTS } from './limits.js';
 import { displayAmount, type AmountUnit } from './money.js';
 import { periodInWords } from './period.js';
@@ -287,8 +287,16 @@ export const planOutput = z.object({
         .string()
         .describe('The period in words, such as "every month (30 days)". Quote this one.'),
     ends_at: nullableDate.describe(
-        'Null: no end date. Else nobody has access after it, and subscriptions end there.',
+        'Null: no end date. Else nobody has access after it, and subscriptions end there. ' +
+            'An instant to the second, not a day.',
     ),
+    ends_display: z
+        .string()
+        .nullable()
+        .describe(
+            'The end with its time in UTC, such as "Oct 20, 2026, 23:59 UTC". Quote this one, ' +
+                'never the day alone. Null: no end date.',
+        ),
     retry_attempts: z.number().nullable().describe('Null with the delay: the built in policy.'),
     retry_delay_minutes: z.number().nullable(),
     retry_policy: z
@@ -333,6 +341,7 @@ export function planOut(plan: AgentPlan): z.input<typeof planOutput> {
         ...snake(plan),
         amount_display: displayAmount(plan.amount, plan.decimals, plan),
         period_display: periodInWords(plan.periodHours),
+        ends_display: planEnd(plan.endsAt),
     };
 }
 
