@@ -109,6 +109,15 @@ describe.each([
         }
     });
 
+    it('never call an event Mesub sends unsent (#61)', async () => {
+        const { tools } = await client.listTools();
+        for (const tool of tools) {
+            const said = `${tool.description ?? ''} ${JSON.stringify(tool.inputSchema)}`;
+            expect(said, tool.name).not.toMatch(/(send|record)s? (these|them|it)\b[^.]*\byet\b/i);
+            expect(said, tool.name).not.toMatch(/not (sent|recorded) yet/i);
+        }
+    });
+
     it('say what they are not, and warn where a call is dangerous', async () => {
         const { tools } = await client.listTools();
         const description = (name: string) =>

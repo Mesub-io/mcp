@@ -48,13 +48,13 @@ describe('the README', () => {
         expect(table).toMatch(/\*\*Prepare\*\* \(1\)/);
     });
 
-    it('promises no address, no key and nothing Mesub removed', () => {
+    it('names one live address, no key and nothing Mesub removed', () => {
         const readme = readFileSync(README, 'utf8');
 
-        // One address at most, and marked as not live yet.
+        // One address, said at most three times, and live: no placeholder left.
         expect(readme.split('https://mcp.mesub.io').length - 1).toBeLessThanOrEqual(3);
-        expect(readme).toMatch(/PLACEHOLDER/);
-        expect(readme).toMatch(/not hosted yet/i);
+        expect(readme).not.toMatch(/placeholder/i);
+        expect(readme).not.toMatch(/not hosted yet|not deployed yet/i);
         for (const gone of [
             /secret key/i,
             /publishable key/i,

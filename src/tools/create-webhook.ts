@@ -37,8 +37,8 @@ export const createWebhook = defineTool({
                 '`subscription.access_revoked` are the two that say whether a customer has ' +
                 'access, sent only when it changes. `subscription.paused` / ' +
                 "`subscription.unpaused`: a seat parked over the project's tier cap or brought " +
-                'back, never a pause the subscriber asked for. Mesub does not send these four ' +
-                'yet, nor `subscription.ended` for a cancellation reaching its end.',
+                'back, never a pause the subscriber asked for. `subscription.ended` also comes ' +
+                'when a cancellation reaches its end.',
         ),
         enabled: z
             .boolean()
