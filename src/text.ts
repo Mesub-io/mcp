@@ -42,3 +42,21 @@ export function tally(values: readonly string[], list: readonly string[]): strin
 export function quoted(text: string, max = 60): string {
     return JSON.stringify(clip(text, max));
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const two = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * A plan's end as people read it, always with its time: `Oct 20, 2026, 23:59 UTC`.
+ * A plan ends on any second, never on a day alone. Seconds are dropped:
+ * 23:59:59 reads 23:59. Null for no date.
+ */
+export function planEnd(date: string | null): string | null {
+    const ms = date !== null && /^\d{4}-\d{2}-\d{2}T/.test(date) ? Date.parse(date) : Number.NaN;
+    if (!Number.isFinite(ms)) return null;
+    const at = new Date(ms);
+    return (
+        `${MONTHS[at.getUTCMonth()]} ${at.getUTCDate()}, ${at.getUTCFullYear()}, ` +
+        `${two(at.getUTCHours())}:${two(at.getUTCMinutes())} UTC`
+    );
+}

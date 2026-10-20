@@ -569,7 +569,7 @@ describe('prepare_plan', () => {
         /** Two wallets locked, the first one paid: what the merchant answered. */
         const PAID = { destinations: LOCKED, paid_wallet: WALLET };
         const ENDS =
-            'It ends on 2027-01-31 23:59:59 UTC: nobody has access after that, and the last ' +
+            'It ends on Jan 31, 2027, 23:59 UTC: nobody has access after that, and the last ' +
             'period is charged in full.';
         const answered = (differs: Record<string, unknown>) =>
             api.answer(201, { ...answers.preparedPlan, ...differs });
@@ -853,7 +853,7 @@ describe('prepare_plan', () => {
             const result = await call({ ...PRO, ends_at: '2027-01-31' });
 
             expect(result.isError).toBeFalsy();
-            expect(sentence(result)).toContain('It ends on 2027-01-31 23:59:59 UTC');
+            expect(sentence(result)).toContain('It ends on Jan 31, 2027, 23:59 UTC');
         });
 
         it('prepares a plan with an API that serves no list of wallets yet', async () => {

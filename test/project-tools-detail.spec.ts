@@ -120,6 +120,22 @@ describe('the project tools, in detail', () => {
         });
 
         it.each([
+            ['the end of a day', '2027-01-31T23:59:59.000Z', 'Jan 31, 2027, 23:59 UTC'],
+            ['an afternoon', '2027-03-31T14:00:00.000Z', 'Mar 31, 2027, 14:00 UTC'],
+            ['no end', null, null],
+        ])(
+            "shows a plan's end with its time on %s, beside the raw instant",
+            async (_, at, shown) => {
+                api.answer(200, { ...answers.planDetail, plan: { ...answers.plan, endsAt: at } });
+
+                const plan = await data('get_plan', { plan_id: PLAN_ID });
+
+                expect(plan.plan.ends_at).toBe(at);
+                expect(plan.plan.ends_display).toBe(shown);
+            },
+        );
+
+        it.each([
             ['0', '0 USDC'],
             ['1', '0.000001 USDC'],
             ['9990000', '9.99 USDC'],
@@ -1413,7 +1429,8 @@ describe('the project tools, in detail', () => {
                 expect(sentence(result)).not.toContain(POISON);
                 expect(sentence(result).endsWith(DATA_NOTICE)).toBe(true);
                 for (const [key, value] of Object.entries(row)) {
-                    if (!key.endsWith('_display')) continue;
+                    // `ends_display` is null on a plan with no end.
+                    if (!key.endsWith('_display') || value === null) continue;
                     expect(value, `${tool}.${key}`).not.toContain('MOON');
                 }
             },
