@@ -2,12 +2,20 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import type { Client } from '@modelcontextprotocol/client';
 
-import { TRUNCATED } from '../src/text.js';
+import { agentPlansSchema, MAX_NAME_LENGTH, preparedPlanSchema } from '../src/mesub/schemas.js';
+import { clip, TRUNCATED } from '../src/text.js';
 import { TOOLS } from '../src/tools/index.js';
 import { ERROR_META_KEY } from '../src/tools/result.js';
 import * as answers from './fixtures/agent-answers.js';
 import { PLAN_ID, refusal } from './fixtures/agent-answers.js';
-import { connect, fakeMesubApi, startServer, type FakeApi, type TestServer } from './helpers.js';
+import {
+    connect,
+    fakeMesubApi,
+    startServer,
+    TOKEN,
+    type FakeApi,
+    type TestServer,
+} from './helpers.js';
 import { CASES, caseOf, type ToolCase } from './tool-cases.js';
 
 type Result = Awaited<ReturnType<Client['callTool']>>;
@@ -379,6 +387,85 @@ describe('hardening', () => {
                 { ...answers.plans[0], websiteUrl: `https://a.test/${'a'.repeat(3000)}` },
             ]);
             expect(codeOf(await call('list_plans'))).toBe('unexpected');
+        });
+
+        it('every added field carrying merchant text is cut and never repeated outside quotes', async () => {
+            const organization = (name: string) => ({ id: answers.ORG_ID, name });
+            for (const written of [INJECTION, LONG]) {
+                for (const [tool, answer] of [
+                    [
+                        'prepare_plan',
+                        { ...answers.teamPreparedPlan, organization: organization(written) },
+                    ],
+                    ['list_plans', [{ ...answers.plans[0], projectName: written }]],
+                ] as const) {
+                    api.answer(caseOf(tool).status, answer);
+
+                    const result = await call(tool, caseOf(tool).args);
+
+                    expect(result.isError, tool).toBeFalsy();
+                    expect(unquoted(sentence(result)), tool).not.toMatch(/INJECTED|ignore all/i);
+                    // Read, and not passed on yet: nowhere in the result.
+                    expect(JSON.stringify(result), tool).not.toMatch(/INJECTED/);
+                }
+            }
+
+            // Cut on the way in, like every other text somebody else wrote.
+            const cut = clip(LONG, MAX_NAME_LENGTH);
+            expect(
+                preparedPlanSchema.parse({
+                    ...answers.teamPreparedPlan,
+                    organization: organization(LONG),
+                }).organization?.name,
+            ).toBe(cut);
+            expect(
+                agentPlansSchema.parse([{ ...answers.plans[0], projectName: LONG }])[0]
+                    ?.projectName,
+            ).toBe(cut);
+
+            // The organization a token names: never in a result nor in a log line.
+            api.issue(TOKEN, { organization: organization(INJECTION), pinned: false });
+            api.answer(200, answers.project);
+            const result = await call('get_project');
+            expect(result.isError).toBeFalsy();
+            expect(JSON.stringify(result)).not.toMatch(/INJECTED/);
+            expect(server.lines.join('\n')).not.toMatch(/INJECTED/);
+            api.issue(TOKEN);
+        });
+
+        it('carries the To sign link of a PENDING plan on list_plans and get_plan, or none', async () => {
+            const pending = {
+                ...answers.plan,
+                status: 'PENDING',
+                signUrl: `${answers.SITE}/dashboard#plans/publish/${PLAN_ID}`,
+                toSignUrl: answers.TO_SIGN_URL,
+            };
+            const reads = [
+                ['list_plans', (plan: unknown) => [{ ...answers.plans[0], ...(plan as object) }]],
+                ['get_plan', (plan: unknown) => ({ ...answers.planDetail, plan })],
+            ] as const;
+            const pick = (tool: string, data: Data) =>
+                tool === 'list_plans' ? data.plans[0] : data.plan;
+
+            for (const [tool, answer] of reads) {
+                api.answer(200, answer(pending));
+                const result = await call(tool, caseOf(tool).args);
+                expect(pick(tool, result.structuredContent).to_sign_url, tool).toBe(
+                    answers.TO_SIGN_URL,
+                );
+
+                const { toSignUrl: _none, ...older } = pending;
+                api.answer(200, answer(older));
+                expect(
+                    pick(tool, (await call(tool, caseOf(tool).args)).structuredContent).to_sign_url,
+                    tool,
+                ).toBeNull();
+
+                api.answer(200, answer({ ...pending, toSignUrl: `javascript:${INJECTION}` }));
+                const refused = await call(tool, caseOf(tool).args);
+                expect(codeOf(refused), tool).toBe('unexpected');
+                expect(text(refused), tool).not.toMatch(/INJECTED/);
+            }
         });
     });
 

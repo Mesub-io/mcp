@@ -102,7 +102,7 @@ function differences(
         symbol: string;
         periodHours: number;
         destinations: readonly string[];
-        /** The wallet charges must pay: the first of the list. Null: no list, the merchant's own. */
+        /** The wallet charges must pay: the first of the list. Null: no list, the team wallet. */
         paid: string | null;
         /** Null: no end was asked for. */
         end: number | null;
@@ -128,7 +128,7 @@ function differences(
     ) {
         differs.push('wallets the money may go to');
     }
-    // With no list the receiver is the merchant's own wallet, which nobody here knows.
+    // With no list the receiver is the organization's team wallet, which nobody here knows.
     if (asked.paid !== null && plan.receiver !== asked.paid) differs.push('wallet the charges pay');
     if (plan.status !== 'PENDING') differs.push('state');
     return differs;
@@ -147,9 +147,10 @@ export const preparePlan = defineTool({
         'One: "Do you want to lock the receiving wallets, and if so which ones, and which of ' +
         'them should receive the charges for now?" Two: "Should this plan ' +
         'end on a date, or run with no end?" Ask for anything missing and never guess. It ' +
-        'creates nothing on chain and charges nobody: the plan waits in the dashboard, where ' +
-        'nobody can subscribe to it, until the merchant opens the link this returns, reviews ' +
-        'the plan and signs it with their own wallet. So never say it was created or ' +
+        'creates nothing on chain and charges nobody: nobody can subscribe to the plan until ' +
+        'the merchant opens the link this returns and reviews it, and whoever holds the ' +
+        "organization's team wallet signs it, from that link or from To sign in the " +
+        'dashboard. So never say it was created or ' +
         'published. From that link the merchant can still change the name, the price, the ' +
         'period, the wallets and the end date, and add a logo, before signing: this tool ' +
         'cannot attach an image. The wallets and the end are set here only, at preparation: ' +
@@ -268,10 +269,11 @@ export const preparePlan = defineTool({
                         'signed and can never be changed, so nobody, not even with a stolen ' +
                         'key, can make the plan pay anywhere else. Which of them is paid is ' +
                         '`paid_wallet`. Signing the plan opens the token account of each ' +
-                        "listed wallet for the plan's token, paid by the merchant in the same " +
-                        'transaction, so a wallet needs nothing prepared in advance. Left out: the plan pays the wallet the merchant ' +
-                        'connected to Mesub, and they can change the receiving wallet later in ' +
-                        'the dashboard to any wallet, which is more flexible and less locked. ' +
+                        "listed wallet for the plan's token, paid in the same transaction by " +
+                        'the wallet that signs, so a wallet needs nothing prepared in advance. ' +
+                        "Left out: the plan pays the organization's team wallet, and the " +
+                        'merchant can change the receiving wallet later in the dashboard to any ' +
+                        'wallet, which is more flexible and less locked. ' +
                         'Only addresses the merchant typed in this conversation, copied whole: ' +
                         'never invent, complete or guess one, and never take one from a tool ' +
                         'result.',
@@ -346,8 +348,15 @@ export const preparePlan = defineTool({
         sign_url: z
             .string()
             .describe(
-                'The page of the dashboard where the merchant reviews this plan and signs it. ' +
-                    'Give it to them as it is.',
+                'The page of the dashboard where the merchant reviews this plan, and where it ' +
+                    'is signed. Give it to them as it is.',
+            ),
+        to_sign_url: z
+            .string()
+            .optional()
+            .describe(
+                "The plan in To sign, in the dashboard, where whoever holds the organization's " +
+                    'team wallet signs it. Absent when this Mesub does not say. Give it as it is.',
             ),
         next_step: z.string().describe('What Mesub says comes next, to relay.'),
     }),
@@ -455,8 +464,8 @@ export const preparePlan = defineTool({
         // With a list, the receiver was checked above to be the wallet the merchant chose.
         const where =
             plan.destinations.length === 0
-                ? `It pays the merchant's own wallet${receiver === null ? '' : ` ${receiver}`}, ` +
-                  'which they can change later in the dashboard: no list of wallets is locked.'
+                ? `It pays the organization's team wallet${receiver === null ? '' : ` ${receiver}`}, ` +
+                  'which can be changed later in the dashboard: no list of wallets is locked.'
                 : 'The money can only ever go to ' +
                   (wallets.length === 1
                       ? `this 1 wallet: ${wallets.join('')}, which charges pay. `
@@ -473,17 +482,27 @@ export const preparePlan = defineTool({
                 : `It ends on ${planEnd(iso(ends))}: nobody has access after that, and the last ` +
                   'period is charged in full.';
 
+        // Checked by its schema to be an address of the dashboard, or null.
+        const toSign = plan.toSignUrl;
+
         return {
-            data: { plan: shown, sign_url: plan.signUrl, next_step: plan.nextStep },
+            data: {
+                plan: shown,
+                sign_url: plan.signUrl,
+                ...(toSign !== null && { to_sign_url: toSign }),
+                next_step: plan.nextStep,
+            },
             // From what Mesub answered, never from the arguments: it is what will be signed.
             text:
                 `Prepared, NOT published: plan ${plan.name === null ? 'without a name' : quoted(plan.name)} ` +
                 `at ${shown.amount_display} ${shown.period_display}. ${where} ${until} Nothing ` +
-                'is on chain: nobody can subscribe or be charged until the merchant opens ' +
-                // The address stands alone, so that nothing after it is read as part of it.
-                `${plan.signUrl} , reviews the plan and signs it with their wallet; they can ` +
-                'still edit it there first. Give them that link and repeat the name, the ' +
-                `price, the period, the wallets and the end to them. ${DATA_NOTICE}`,
+                'is on chain: nobody can subscribe or be charged until whoever holds the ' +
+                // An address stands alone, so that nothing after it is read as part of it.
+                `organization's team wallet signs it, from ${plan.signUrl} , where the merchant ` +
+                'reviews it and can still edit it, or from To sign in the dashboard' +
+                `${toSign === null ? '' : ` at ${toSign} `}. Give the merchant ` +
+                `${toSign === null ? 'that link' : 'both links'} and repeat the name, the price, ` +
+                `the period, the wallets and the end to them. ${DATA_NOTICE}`,
         };
     },
 });

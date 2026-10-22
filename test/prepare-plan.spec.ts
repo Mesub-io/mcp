@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import type { Client } from '@modelcontextprotocol/client';
 
+import { INSTRUCTIONS } from '../src/server.js';
 import { DATA_NOTICE, quoted } from '../src/text.js';
 import { ERROR_META_KEY } from '../src/tools/result.js';
 import { forgetNetwork, TOKENS } from '../src/tools/tokens.js';
@@ -15,7 +16,9 @@ import {
     WALLET,
     refusal,
     SITE,
+    TEAM_WALLET,
     TEST_USDC,
+    TO_SIGN_URL,
     USDC,
     USDT,
 } from './fixtures/agent-answers.js';
@@ -50,17 +53,22 @@ const NOT_ALLOWED =
     'A plan on another token is created in the dashboard.';
 
 const OTHER_WALLET = '3h1zGmCwsRJnVk5BuRNMLsPaQu1y2aqXqXDWYCgrp5UG';
-const OWN_WALLET =
-    'It pays the merchant\'s own wallet "9WzD...AWWM", which they can change later in the ' +
-    'dashboard: no list of wallets is locked.';
+const TEAM_PAYS =
+    'It pays the organization\'s team wallet "9WzD...AWWM", which can be changed later in ' +
+    'the dashboard: no list of wallets is locked.';
 const NO_END = 'It has no end date: it runs until the merchant closes it.';
-/** The whole sentence of a plan prepared as `PRO`, with what it says of the wallets and of the end. */
-const sentenceOf = (wallets: string, end: string) =>
+/**
+ * The whole sentence of a plan prepared as `PRO`, with what it says of the
+ * wallets and of the end, and the To sign link when Mesub served one.
+ */
+const sentenceOf = (wallets: string, end: string, toSign?: string) =>
     `Prepared, NOT published: plan "Pro" at 9.99 USDC every month (30 days). ${wallets} ${end} ` +
-    'Nothing is on chain: nobody can subscribe or be charged until the merchant opens ' +
-    `${SITE}/dashboard#plans/publish/${PREPARED_ID} , reviews the plan and signs it with their ` +
-    'wallet; they can still edit it there first. Give them that link and repeat the name, the ' +
-    `price, the period, the wallets and the end to them. ${DATA_NOTICE}`;
+    'Nothing is on chain: nobody can subscribe or be charged until whoever holds the ' +
+    `organization's team wallet signs it, from ${SITE}/dashboard#plans/publish/${PREPARED_ID} , ` +
+    'where the merchant reviews it and can still edit it, or from To sign in the dashboard' +
+    `${toSign === undefined ? '' : ` at ${toSign} `}. Give the merchant ` +
+    `${toSign === undefined ? 'that link' : 'both links'} and repeat the name, the price, the ` +
+    `period, the wallets and the end to them. ${DATA_NOTICE}`;
 
 /** The least a plan is made of. */
 const PRO = { name: 'Pro', token: 'USDC', price: '9.99', period_hours: 720 };
@@ -410,7 +418,7 @@ describe('prepare_plan', () => {
             const result = await call(PRO);
 
             expect(result.isError).toBeFalsy();
-            expect(sentence(result)).toBe(sentenceOf(OWN_WALLET, NO_END));
+            expect(sentence(result)).toBe(sentenceOf(TEAM_PAYS, NO_END));
         });
 
         it('returns the plan as get_plan does, with where to sign and what comes next', async () => {
@@ -423,10 +431,10 @@ describe('prepare_plan', () => {
             const data = await prepared(PRO);
 
             expect(Object.keys(data).sort()).toEqual(['next_step', 'plan', 'sign_url']);
-            // get_plan carries the link in its plan; prepare_plan beside it.
+            // get_plan carries the links in its plan; prepare_plan beside it.
             expect(Object.keys(data.plan).sort()).toEqual(
                 Object.keys(read.plan)
-                    .filter((key) => key !== 'sign_url')
+                    .filter((key) => key !== 'sign_url' && key !== 'to_sign_url')
                     .sort(),
             );
             expect(data.plan).toMatchObject({
@@ -553,8 +561,83 @@ describe('prepare_plan', () => {
 
             const line = sentence(await call(PRO));
 
-            expect(line).toContain("It pays the merchant's own wallet, which they can change");
+            expect(line).toContain("It pays the organization's team wallet, which can be changed");
             expect(line).not.toMatch(/IGNORE|poison/i);
+        });
+
+        it('hands out the To sign link beside the sign link', async () => {
+            api.answer(201, answers.teamPreparedPlan);
+
+            const result = await call(PRO);
+            const data = result.structuredContent as Data;
+
+            expect(result.isError).toBeFalsy();
+            expect(data.sign_url).toBe(SIGN_URL);
+            expect(data.to_sign_url).toBe(TO_SIGN_URL);
+            expect(Object.keys(data).sort()).toEqual([
+                'next_step',
+                'plan',
+                'sign_url',
+                'to_sign_url',
+            ]);
+            expect(sentence(result)).toBe(sentenceOf(TEAM_PAYS, NO_END, TO_SIGN_URL));
+            // The signer and the organization are read, and not passed on.
+            expect(JSON.stringify(result)).not.toContain(TEAM_WALLET);
+            expect(JSON.stringify(result)).not.toContain('Fraise & Co');
+        });
+
+        it('hands out no To sign link from an API that serves none', async () => {
+            for (const toSignUrl of [undefined, null]) {
+                api.answer(201, { ...answers.teamPreparedPlan, toSignUrl });
+
+                const result = await call(PRO);
+
+                expect(result.isError, String(toSignUrl)).toBeFalsy();
+                expect(result.structuredContent, String(toSignUrl)).not.toHaveProperty(
+                    'to_sign_url',
+                );
+                expect(sentence(result)).toBe(sentenceOf(TEAM_PAYS, NO_END));
+            }
+        });
+
+        it('refuses a To sign link that is not an address of the dashboard', async () => {
+            for (const toSignUrl of [
+                'javascript:alert(1)',
+                `${TO_SIGN_URL} and ${POISON}`,
+                'https://user:pass@mesub.io/to-sign/x',
+                'http://mesub.example.test/to-sign/x',
+                POISON,
+                { href: TO_SIGN_URL },
+            ]) {
+                api.answer(201, { ...answers.teamPreparedPlan, toSignUrl });
+
+                const result = await call(PRO);
+
+                expect(result.isError, String(toSignUrl)).toBe(true);
+                expect(errorOf(result)?.code).toBe('unexpected');
+                expect(text(result)).toMatch(/list_plans/);
+                expect(JSON.stringify(result)).not.toContain(POISON);
+            }
+        });
+
+        it("names the team wallet as who signs, never the merchant's own wallet", async () => {
+            const { tools } = await client.listTools();
+            const tool = tools.find((entry) => entry.name === 'prepare_plan');
+            const description = tool?.description ?? '';
+            const inputs = JSON.stringify(tool?.inputSchema);
+            const outputs = JSON.stringify(tool?.outputSchema);
+
+            for (const said of [description, INSTRUCTIONS]) {
+                expect(said).toContain(
+                    "whoever holds the organization's team wallet signs it, from that link or " +
+                        'from To sign in the dashboard',
+                );
+            }
+            expect(INSTRUCTIONS).not.toMatch(/signs it with\s+their own wallet/);
+            for (const said of [description, inputs, outputs, sentence(await call(PRO))]) {
+                expect(said).not.toMatch(/own wallet|their wallet|wallet the merchant connected/);
+            }
+            expect(sentence(await call(PRO))).toBe(sentenceOf(TEAM_PAYS, NO_END));
         });
     });
 
@@ -673,7 +756,7 @@ describe('prepare_plan', () => {
         });
 
         it('says its own wallet and no end, with neither', async () => {
-            expect(sentence(await call(PRO))).toBe(sentenceOf(OWN_WALLET, NO_END));
+            expect(sentence(await call(PRO))).toBe(sentenceOf(TEAM_PAYS, NO_END));
         });
 
         it('says the wallets, their number and that they are locked, with a list', async () => {
@@ -694,7 +777,7 @@ describe('prepare_plan', () => {
 
             const result = await call({ ...PRO, ends_at: '2027-01-31' });
 
-            expect(sentence(result)).toBe(sentenceOf(OWN_WALLET, ENDS));
+            expect(sentence(result)).toBe(sentenceOf(TEAM_PAYS, ENDS));
             expect((result.structuredContent as Data).plan).toMatchObject({
                 destinations: [],
                 ends_at: END,
@@ -804,13 +887,15 @@ describe('prepare_plan', () => {
             },
         );
 
-        it("holds no plan without a list to a receiver: it is the merchant's own wallet", async () => {
+        it("holds no plan without a list to a receiver: it is the organization's team wallet", async () => {
             answered({ receiver: OTHER_WALLET });
 
             const result = await call(PRO);
 
             expect(result.isError).toBeFalsy();
-            expect(sentence(result)).toContain('It pays the merchant\'s own wallet "3h1z...p5UG"');
+            expect(sentence(result)).toContain(
+                'It pays the organization\'s team wallet "3h1z...p5UG"',
+            );
         });
 
         it.each([
@@ -864,7 +949,7 @@ describe('prepare_plan', () => {
 
             expect(result.isError).toBeFalsy();
             expect((result.structuredContent as Data).plan.destinations).toEqual([]);
-            expect(sentence(result)).toBe(sentenceOf(OWN_WALLET, NO_END));
+            expect(sentence(result)).toBe(sentenceOf(TEAM_PAYS, NO_END));
         });
 
         it.each([

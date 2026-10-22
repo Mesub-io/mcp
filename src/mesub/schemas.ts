@@ -19,7 +19,15 @@ export type ApiHealth = z.infer<typeof apiHealthSchema>;
 /** `GET /agent/whoami`: the connection an agent's access token stands for. */
 export const agentWhoamiSchema = z.object({
     connection_id: z.string().min(1).max(200),
-    project: z.object({ id: z.string().min(1).max(200), name: z.string().max(500) }),
+    // Null: the connection reaches every project of its organization.
+    project: z.object({ id: z.string().min(1).max(200), name: z.string().max(500) }).nullable(),
+    // Absent from an API older than organizations: null then.
+    organization: z
+        .object({ id: z.string().min(1).max(200), name: z.string().max(500) })
+        .nullish()
+        .default(null),
+    // Whether the connection is held to `project`. Absent from an older API: null then.
+    pinned: z.boolean().nullish().default(null),
     client: z.object({ id: z.string().max(2048), name: z.string().max(500) }),
     scope: z.string().max(500),
     /** Who the token is for: this server's own resource URL, which it checks. */
@@ -231,6 +239,13 @@ const externalId = z
     .transform((value) => value ?? null);
 /** Where a PENDING plan is signed; null on any other, and from an API older than the field. */
 const signUrl = link.nullish().transform((value) => value ?? null);
+/** Its entry in To sign, where the team wallet signs it: as `signUrl`, null from an older API. */
+const toSignUrl = link.nullish().default(null);
+/** The organization of a plan: its name was written by a person. Null from an older API. */
+const organization = z
+    .object({ id, name: text(MAX_NAME_LENGTH) })
+    .nullish()
+    .default(null);
 
 const planStatus = code();
 const subscriptionStatus = code();
@@ -336,6 +351,10 @@ export type AgentPlan = z.infer<typeof agentPlanSchema>;
 /** `POST /agent/plans`: the plan just prepared, and where its merchant signs it. */
 export const preparedPlanSchema = agentPlanSchema.extend({
     signUrl: link,
+    toSignUrl,
+    // The wallet that signs it: the team wallet of its organization. Read, not passed on.
+    signer: plain.nullish().default(null),
+    organization,
     nextStep: text(MAX_REASON_LENGTH),
 });
 export type PreparedPlan = z.infer<typeof preparedPlanSchema>;
@@ -344,6 +363,10 @@ export type PreparedPlan = z.infer<typeof preparedPlanSchema>;
 export const agentPlansSchema = z.array(
     agentPlanSchema.extend({
         signUrl,
+        toSignUrl,
+        // The project of the row: read, not passed on yet. Null from an older API.
+        projectId: id.nullish().default(null),
+        projectName: text(MAX_NAME_LENGTH).nullish().default(null),
         subscribers: count,
         collectedThisPeriod: amount,
         collectedThisPeriodUsd: usd,
@@ -370,7 +393,7 @@ export type AgentAttempt = z.infer<typeof attemptSchema>;
 
 /** `GET /agent/plans/:id`. */
 export const agentPlanDetailSchema = z.object({
-    plan: agentPlanSchema.extend({ signUrl }),
+    plan: agentPlanSchema.extend({ signUrl, toSignUrl }),
     subscribers: countsByCode(),
     monthly: amount,
     monthlyUsd: usd.nullable(),

@@ -39,7 +39,7 @@ interface Refused {
     status: number | null;
     retryable: boolean;
     retryAfterSeconds: number | null;
-    /** Where a merchant connects a wallet: an address of the dashboard, checked by the client. */
+    /** Where a merchant connects a wallet, or the Owner sets the team wallet: checked by the client. */
     walletUrl?: string | null;
     /** The id Mesub gave the request (`Mesub-Request-Id`), checked to be one. */
     requestId?: string | null;
@@ -51,6 +51,16 @@ function prepareAdvice({ code, status, walletUrl }: Refused): string | undefined
         // The address stands alone, so that nothing after it is read as part of it.
         const where = walletUrl ? `at ${walletUrl} ,` : 'in the settings of the Mesub dashboard,';
         return `Nothing was prepared. Ask the merchant to connect their wallet ${where} then call again.`;
+    }
+    if (code === 'team_wallet_required') {
+        // The address stands alone, as above.
+        const where = walletUrl
+            ? `at ${walletUrl} ,`
+            : 'in the Organization settings of the Mesub dashboard,';
+        return (
+            'Nothing was prepared. This organization has no team wallet yet, and only its ' +
+            `Owner sets one, ${where} then call again.`
+        );
     }
     if (code === 'end_date_too_soon') {
         return (
@@ -78,7 +88,8 @@ function prepareAdvice({ code, status, walletUrl }: Refused): string | undefined
             'the names in use.'
         );
     }
-    if (status === 409) {
+    // A bare 409 of the API: its slug check. Any other 409 code gets the advice by status.
+    if (code === 'conflict') {
         return (
             'Nothing was prepared. The name gives a slug another plan answers to: ask the ' +
             'merchant for another name.'
@@ -121,6 +132,27 @@ function retryAdvice({ code }: Refused): string | undefined {
     return undefined;
 }
 
+/**
+ * A member whose role does not allow the call: the message names who may.
+ * Nothing the agent can do about it, and connecting again changes nothing.
+ */
+export const ROLE_ADVICE =
+    "Nothing was changed. The merchant's role in this organization does not allow this: relay " +
+    'the message as it is. Someone it names can do it, or can give them that role. The same ' +
+    'call gives the same answer until then.';
+
+/** Which project a call is for, when the connection reaches more than one. */
+const PROJECT_ADVICE: Record<string, string> = {
+    project_required:
+        'Call `list_projects`, ask the merchant which project when it is not clear, then call ' +
+        'again with `project`.',
+    project_not_found: 'Take the project from `list_projects`: its id or its exact name.',
+    project_ambiguous: "Call again with the project's id from `list_projects`.",
+    project_outside_pin:
+        'This connection reaches one project. For another, the merchant connects again and ' +
+        'chooses the whole organization or that project.',
+};
+
 /** What to check before preparing again a plan whose first try may have gone through. */
 const PREPARED_ALREADY =
     ' Read `list_plans` before preparing it again: a plan of that name that is PENDING means ' +
@@ -160,6 +192,11 @@ export function adviceFor(refusal: Refused, tool?: string): string {
             `calling again.${preparing ? PREPARED_ALREADY : ''}`
         );
     }
+    // Before what a tool or a status says: the same answer from every tool.
+    if (code === 'role_required') return ROLE_ADVICE;
+    const project = Object.hasOwn(PROJECT_ADVICE, code) ? PROJECT_ADVICE[code] : undefined;
+    if (project !== undefined) return project;
+
     const prepare = preparing ? prepareAdvice(refusal) : undefined;
     if (prepare !== undefined) return prepare;
     const retry = tool === 'retry_charge' ? retryAdvice(refusal) : undefined;
@@ -291,7 +328,9 @@ export function failure(error: unknown, tool: string, logger: Logger): CallToolR
                 retryAfterSeconds,
                 ...(requestId !== null && { requestId }),
                 // Only where it is acted on: no other refusal carries an address.
-                ...(code === 'wallet_required' && { walletUrl }),
+                ...((code === 'wallet_required' || code === 'team_wallet_required') && {
+                    walletUrl,
+                }),
             },
             tool,
         );

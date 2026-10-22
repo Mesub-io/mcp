@@ -252,7 +252,7 @@ export const CASES: ToolCase[] = [
             retryDelayMinutes: 60,
         },
         status: 201,
-        answer: answers.preparedPlan,
+        answer: answers.teamPreparedPlan,
     },
 ];
 

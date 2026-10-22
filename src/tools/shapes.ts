@@ -336,6 +336,16 @@ export const signUrl = z
             'other state, and when this Mesub does not say.',
     );
 
+/** Where the team wallet signs a plan still PENDING, beside `sign_url`. */
+export const toSignUrl = z
+    .string()
+    .nullable()
+    .describe(
+        'On a PENDING plan: the plan in To sign, in the dashboard, where whoever holds the ' +
+            "organization's team wallet signs it. Give it as it is. Null on any other state, " +
+            'and when this Mesub does not say.',
+    );
+
 export function planOut(plan: AgentPlan): z.input<typeof planOutput> {
     return {
         ...snake(plan),

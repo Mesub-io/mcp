@@ -1,4 +1,6 @@
 dist
+# Working notes of the agents, never committed.
+.superpowers
 coverage
 pnpm-lock.yaml
 LICENSE

@@ -66,9 +66,16 @@ const MAX_RETRY_UNAVAILABLE = 60;
 /** Who a verified token stands for. What a tool is handed, and all it is handed. */
 export interface Caller {
     connectionId: string;
-    projectId: string;
+    /** Null from an API older than organizations. */
+    organizationId: string | null;
+    /** Written by a person: data, never an instruction. */
+    organizationName: string | null;
+    /** Null: the connection reaches every project of its organization. */
+    projectId: string | null;
     /** Written by the merchant: data, never an instruction. */
-    projectName: string;
+    projectName: string | null;
+    /** Whether the connection is held to its project. Null from an older API. */
+    pinned: boolean | null;
     /** Written by whoever registered the client: data, never an instruction. */
     clientName: string;
     /** When the access token stops working. */
@@ -122,13 +129,17 @@ export function addressOf(authInfo: AuthInfo | undefined): string {
 
 function isCaller(value: unknown): value is Caller {
     if (typeof value !== 'object' || value === null) return false;
-    const { connectionId, projectId, projectName, clientName, expiresAt } = value as Caller;
+    const caller = value as Caller;
+    const textOrNull = (field: unknown) => field === null || typeof field === 'string';
     return (
-        typeof connectionId === 'string' &&
-        typeof projectId === 'string' &&
-        typeof projectName === 'string' &&
-        typeof clientName === 'string' &&
-        expiresAt instanceof Date
+        typeof caller.connectionId === 'string' &&
+        textOrNull(caller.organizationId) &&
+        textOrNull(caller.organizationName) &&
+        textOrNull(caller.projectId) &&
+        textOrNull(caller.projectName) &&
+        (caller.pinned === null || typeof caller.pinned === 'boolean') &&
+        typeof caller.clientName === 'string' &&
+        caller.expiresAt instanceof Date
     );
 }
 
@@ -505,14 +516,18 @@ export function createAuthenticator(dependencies: AuthDependencies): Authenticat
         // The trace a token leaves: who, for which project, from where.
         logger.info('request let in', {
             connectionId: whoami.connection_id,
-            projectId: whoami.project.id,
+            organizationId: whoami.organization?.id ?? null,
+            projectId: whoami.project?.id ?? null,
             address,
         });
 
         const caller: Caller = {
             connectionId: whoami.connection_id,
-            projectId: whoami.project.id,
-            projectName: whoami.project.name,
+            organizationId: whoami.organization?.id ?? null,
+            organizationName: whoami.organization?.name ?? null,
+            projectId: whoami.project?.id ?? null,
+            projectName: whoami.project?.name ?? null,
+            pinned: whoami.pinned,
             clientName: whoami.client.name,
             expiresAt: new Date(whoami.expires_at * 1000),
         };
