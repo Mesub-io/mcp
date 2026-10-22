@@ -145,7 +145,26 @@ export const preparedPlan = {
     nextStep: NEXT_STEP,
 };
 
+/** The wallet of the organization that signs its plans. */
+export const TEAM_WALLET = 'HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH';
+export const ORG_ID = 'corg0000000000000000001';
+/** The plan's entry in To sign, where the holder of the team wallet signs it. */
+export const TO_SIGN_URL = `${SITE}/to-sign/cpa00000000000000000001`;
+/** What `POST /agent/plans` answers since it names who signs, and where (teams v1). */
+export const teamPreparedPlan = {
+    ...preparedPlan,
+    toSignUrl: TO_SIGN_URL,
+    signer: TEAM_WALLET,
+    organization: { id: ORG_ID, name: `Fraise & Co ${POISON}` },
+    nextStep:
+        "Nothing is on chain yet. Whoever holds the organization's team wallet opens this " +
+        'link, reviews the plan and signs it.',
+};
+
 const listed = {
+    // The project of the row, served since teams v1, read and not passed on yet.
+    projectId: 'proj_1',
+    projectName: `Fraise ${POISON}`,
     subscribers: 12,
     collectedThisPeriod: '119880000',
     collectedThisPeriodUsd: '119.88',

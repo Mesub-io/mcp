@@ -12,7 +12,7 @@ const who = defineTool({
     inputSchema: z.strictObject({}),
     outputSchema: z.object({
         connection_id: z.string(),
-        project_id: z.string(),
+        project_id: z.string().nullable(),
         via_api: z.string(),
     }),
     annotations: {

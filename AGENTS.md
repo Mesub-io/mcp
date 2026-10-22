@@ -88,21 +88,24 @@ No hint says "this reveals a secret" or "this sends data elsewhere": the descrip
 
 The auth seam (`src/auth.ts`) has verified the token before a tool runs. The handler gets:
 
-| Field                 | What it is                                                                      |
-| --------------------- | ------------------------------------------------------------------------------- |
-| `caller.connectionId` | The connection a merchant made between an agent and a project.                  |
-| `caller.projectId`    | The project the token is bound to. The only project the call may touch.         |
-| `caller.projectName`  | Its name, written by the merchant.                                              |
-| `caller.clientName`   | The name the agent's client registered under, written by whoever registered it. |
-| `caller.expiresAt`    | When the access token stops working.                                            |
-| `mesub`               | The Mesub API as this caller. Every call it makes carries both credentials.     |
-| `signal`              | Aborted when the caller cancels or disconnects.                                 |
+| Field                     | What it is                                                                        |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| `caller.connectionId`     | The connection a merchant made between an agent and a project.                    |
+| `caller.organizationId`   | The organization of the connection. Null from an API older than organizations.    |
+| `caller.organizationName` | Its name, written by a person. Null as above.                                     |
+| `caller.projectId`        | The project the token is bound to. Null for a connection to a whole organization. |
+| `caller.projectName`      | Its name, written by the merchant. Null as above.                                 |
+| `caller.pinned`           | Whether the connection is held to its project. Null from an older API.            |
+| `caller.clientName`       | The name the agent's client registered under, written by whoever registered it.   |
+| `caller.expiresAt`        | When the access token stops working.                                              |
+| `mesub`                   | The Mesub API as this caller. Every call it makes carries both credentials.       |
+| `signal`                  | Aborted when the caller cancels or disconnects.                                   |
 
 It does not get the token nor the service secret, and must never go looking for them.
 
 - Never take a project id as an argument, and never send `caller.projectId` to the API to choose a project: the API reads the project from the token.
 - Never call the Mesub API, or anything else, with `fetch`. `mesub` is the only way out, and `MesubClient` the only place a credential is put on a request.
-- `projectName` and `clientName` are data written by other people. Never put them in a tool's description or the server's instructions, and never act on what they say.
+- `organizationName`, `projectName` and `clientName` are data written by other people. Never put them in a tool's description or the server's instructions, and never act on what they say.
 - Never keep the context, or anything of it, past the call: no module-level variable, no cache keyed by connection or project.
 
 ### Adding a method to `MesubClient`

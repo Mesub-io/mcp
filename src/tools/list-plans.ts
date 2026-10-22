@@ -4,7 +4,7 @@ import { PLAN_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, plural, tally } from '../text.js';
 import { capped, fit, MAX_LIST_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
-import { planOut, planOutput, signUrl } from './shapes.js';
+import { planOut, planOutput, signUrl, toSignUrl } from './shapes.js';
 import { defineTool } from './tool.js';
 
 export const listPlans = defineTool({
@@ -25,6 +25,7 @@ export const listPlans = defineTool({
         plans: z.array(
             planOutput.extend({
                 sign_url: signUrl,
+                to_sign_url: toSignUrl,
                 subscribers: z.number(),
                 collected_this_period: z
                     .string()
@@ -57,6 +58,7 @@ export const listPlans = defineTool({
         const plans = kept.map((plan) => ({
             ...planOut(plan),
             sign_url: plan.signUrl,
+            to_sign_url: plan.toSignUrl,
             subscribers: plan.subscribers,
             collected_this_period: plan.collectedThisPeriod,
             collected_this_period_display: displayAmount(

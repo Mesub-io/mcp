@@ -45,7 +45,12 @@ export interface FakeApiCall {
 
 export interface FakeConnection {
     connection_id: string;
-    project: { id: string; name: string };
+    /** Null: the connection reaches every project of its organization. */
+    project: { id: string; name: string } | null;
+    /** Absent from an API older than organizations. */
+    organization?: { id: string; name: string };
+    /** Whether the connection is held to its project. Absent from an older API. */
+    pinned?: boolean;
     client: { id: string; name: string };
     scope: string;
     audience: string;

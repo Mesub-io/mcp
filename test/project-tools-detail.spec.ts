@@ -1587,7 +1587,8 @@ describe('the project tools, in detail', () => {
             const plans = await call('list_plans');
             expect(plans.structuredContent).toMatchObject({ total: 150, truncated: true });
             const kept = (plans.structuredContent as Data).plans.length;
-            expect(kept).toBeGreaterThan(50);
+            // Rows of this fixture are long: each carries its texts poisoned and both sign links.
+            expect(kept).toBeGreaterThan(40);
             expect(kept).toBeLessThanOrEqual(100);
             expect(size(plans)).toBeLessThanOrEqual(MAX_RESULT_LENGTH);
             expect(sentence(plans)).toBe(

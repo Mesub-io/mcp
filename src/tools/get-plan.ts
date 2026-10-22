@@ -14,6 +14,7 @@ import {
     reason,
     reasonLabel,
     signUrl,
+    toSignUrl,
 } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
@@ -38,7 +39,7 @@ export const getPlan = defineTool({
         plan_id: idInput('The id of the plan, as `list_plans` returns it. Not its slug.'),
     }),
     outputSchema: z.object({
-        plan: planOutput.extend({ sign_url: signUrl }),
+        plan: planOutput.extend({ sign_url: signUrl, to_sign_url: toSignUrl }),
         subscribers_by_status: z
             .record(z.string(), z.number())
             .describe(
@@ -109,7 +110,7 @@ export const getPlan = defineTool({
 
         return {
             data: {
-                plan: { ...planOut(plan), sign_url: plan.signUrl },
+                plan: { ...planOut(plan), sign_url: plan.signUrl, to_sign_url: plan.toSignUrl },
                 subscribers_by_status: detail.subscribers,
                 monthly: detail.monthly,
                 monthly_display: shown(detail.monthly),

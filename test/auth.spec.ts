@@ -646,8 +646,11 @@ describe('authorization', () => {
 
             expect(seen?.caller).toEqual({
                 connectionId: 'conn_probe',
+                organizationId: null,
+                organizationName: null,
                 projectId: 'proj_42',
                 projectName: 'Fraise',
+                pinned: null,
                 clientName: 'An agent',
                 expiresAt: new Date(issued.expires_at * 1000),
             });
@@ -658,6 +661,125 @@ describe('authorization', () => {
             expect(shown).not.toContain('mat_probe');
             expect(shown).not.toContain(SERVICE_SECRET);
             await probing.stop();
+        });
+    });
+
+    describe('the whoami of an organization', () => {
+        const seen: ToolContext[] = [];
+        const probe = defineTool({
+            name: 'probe',
+            title: 'Probe',
+            description: 'Records the context it was handed.',
+            inputSchema: z.strictObject({}),
+            outputSchema: z.object({ ok: z.boolean() }),
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+            handler: async (_args, context) => {
+                seen.push(context);
+                return { data: { ok: true }, text: 'ok' };
+            },
+        });
+        beforeEach(() => {
+            seen.length = 0;
+        });
+
+        it('accepts a whoami with no project and an organization', async () => {
+            const probing = await startServer({ MESUB_API_URL: api.url }, { tools: [probe] });
+            const issued = api.issue('mat_org', {
+                connection_id: 'conn_org',
+                project: null,
+                organization: { id: 'org_7', name: 'Fraise & Co' },
+                pinned: false,
+            });
+
+            const response = await callTool(probing.url, 'probe', {}, bearer('mat_org'));
+
+            expect(response.status).toBe(200);
+            expect(await readJsonRpc(response)).toMatchObject({
+                result: { structuredContent: { ok: true } },
+            });
+            expect(seen[0]?.caller).toEqual({
+                connectionId: 'conn_org',
+                organizationId: 'org_7',
+                organizationName: 'Fraise & Co',
+                projectId: null,
+                projectName: null,
+                pinned: false,
+                clientName: 'Test agent',
+                expiresAt: new Date(issued.expires_at * 1000),
+            });
+            expect(probing.logs).toContainEqual(
+                expect.objectContaining({
+                    message: 'request let in',
+                    connectionId: 'conn_org',
+                    organizationId: 'org_7',
+                    projectId: null,
+                }),
+            );
+            await probing.stop();
+        });
+
+        it("accepts today's whoami, without organization", async () => {
+            const probing = await startServer({ MESUB_API_URL: api.url }, { tools: [probe] });
+            api.issue('mat_today', {
+                connection_id: 'conn_today',
+                project: { id: 'proj_3', name: 'Fraise' },
+            });
+
+            const response = await callTool(probing.url, 'probe', {}, bearer('mat_today'));
+
+            expect(response.status).toBe(200);
+            expect(seen[0]?.caller).toMatchObject({
+                connectionId: 'conn_today',
+                organizationId: null,
+                organizationName: null,
+                projectId: 'proj_3',
+                projectName: 'Fraise',
+                pinned: null,
+            });
+            expect(probing.logs).toContainEqual(
+                expect.objectContaining({
+                    message: 'request let in',
+                    organizationId: null,
+                    projectId: 'proj_3',
+                }),
+            );
+            await probing.stop();
+        });
+
+        it('accepts a pinned connection of an organization', async () => {
+            const probing = await startServer({ MESUB_API_URL: api.url }, { tools: [probe] });
+            api.issue('mat_pinned', {
+                project: { id: 'proj_5', name: 'Fraise' },
+                organization: { id: 'org_7', name: 'Fraise & Co' },
+                pinned: true,
+            });
+
+            const response = await callTool(probing.url, 'probe', {}, bearer('mat_pinned'));
+
+            expect(response.status).toBe(200);
+            expect(seen[0]?.caller).toMatchObject({
+                organizationId: 'org_7',
+                projectId: 'proj_5',
+                pinned: true,
+            });
+            await probing.stop();
+        });
+
+        it('refuses a whoami whose organization is not one', async () => {
+            for (const organization of [{ id: '', name: 'x' }, { id: 'org_7' }, 'org_7']) {
+                api.whoami({
+                    status: 200,
+                    body: { ...api.knows(TOKEN), organization },
+                });
+                const response = await callTool(server.url, 'ping');
+                expect(response.status, JSON.stringify(organization)).toBe(503);
+            }
+            api.whoami();
         });
     });
 
