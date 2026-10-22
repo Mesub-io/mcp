@@ -5,10 +5,13 @@ import { ERROR_META_KEY } from '../src/tools/result.js';
 import { SERVER_NAME, VERSION } from '../src/version.js';
 import { TOOLS } from '../src/tools/index.js';
 import {
+    callTool,
+    CHALLENGE,
     connect,
     deadUrl,
     fakeMesubApi,
     MODERN,
+    readJsonRpc,
     SERVICE_SECRET,
     startServer,
     TOKEN,
@@ -268,6 +271,36 @@ describe('the MCP endpoint, for a client whose token is refused', () => {
 
         await expect(connect(server.url, { token: 'mat_made-up' })).rejects.toThrow();
         await expect(connect(server.url, { token: 'mat_made-up', modern: true })).rejects.toThrow();
+
+        await server.stop();
+        await api.close();
+    });
+});
+
+describe('the MCP endpoint, for a person removed from the organization', () => {
+    it('a token cut by a removal is a 401 challenge on the next request', async () => {
+        const api = await fakeMesubApi();
+        const server = await startServer({ MESUB_API_URL: api.url });
+        // The check passed; between it and the route, the person was removed and the token cut.
+        api.answer(401, {
+            statusCode: 401,
+            message: 'That access token is not valid.',
+            error: 'Unauthorized',
+            code: 'invalid_agent_token',
+            retryable: false,
+        });
+
+        const first = await callTool(server.url, 'list_plans');
+        expect(first.status).toBe(200);
+        expect(await readJsonRpc(first)).toMatchObject({
+            result: { isError: true, _meta: { [ERROR_META_KEY]: { code: 'invalid_agent_token' } } },
+        });
+
+        const checks = api.callsTo('/agent/whoami').length;
+        const next = await callTool(server.url, 'list_plans');
+        expect(next.status).toBe(401);
+        expect(next.headers.get('www-authenticate')).toBe(CHALLENGE);
+        expect(api.callsTo('/agent/whoami')).toHaveLength(checks);
 
         await server.stop();
         await api.close();

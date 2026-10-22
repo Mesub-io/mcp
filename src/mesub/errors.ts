@@ -27,7 +27,7 @@ export class MesubApiError extends Error {
     readonly retryable: boolean;
     /** From `Retry-After`, when Mesub sent one. */
     readonly retryAfterSeconds: number | null;
-    /** Where a merchant connects a wallet, when a refusal names it: an address of the dashboard, checked. */
+    /** Where a wallet is connected or the team wallet set, when a refusal names it: an address of the dashboard, checked. */
     readonly walletUrl: string | null;
     /** The id Mesub gave the request, to quote to Mesub support. Null when none came back. */
     readonly requestId: string | null;
