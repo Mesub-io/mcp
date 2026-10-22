@@ -88,7 +88,8 @@ function prepareAdvice({ code, status, walletUrl }: Refused): string | undefined
             'the names in use.'
         );
     }
-    if (status === 409) {
+    // A bare 409 of the API: its slug check. Any other 409 code gets the advice by status.
+    if (code === 'conflict') {
         return (
             'Nothing was prepared. The name gives a slug another plan answers to: ask the ' +
             'merchant for another name.'

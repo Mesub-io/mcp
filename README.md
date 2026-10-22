@@ -259,7 +259,7 @@ node --env-file=.env dist/main.js
 
 ```sh
 curl http://localhost:3334/health
-# {"status":"ok","name":"mesub-mcp","version":"0.1.0"}
+# {"status":"ok","name":"mesub-mcp","version":"0.1.2"}
 curl -i -X POST http://localhost:3334/mcp
 # 401, with the challenge
 curl http://localhost:3334/.well-known/oauth-protected-resource/mcp

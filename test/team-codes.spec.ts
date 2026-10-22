@@ -180,4 +180,17 @@ describe('the refusals of an organization', () => {
         expect(errorOf(result)).toMatchObject({ code: 'already_prepared', status: 409 });
         expect(errorOf(result)).not.toHaveProperty('walletUrl');
     });
+
+    it('gives prepare_plan the slug advice for a bare conflict only', async () => {
+        const message = 'That action was prepared already.';
+        api.answer(409, refusal(409, 'already_prepared', message));
+
+        const result = await call('prepare_plan', PRO);
+
+        expect(text(result)).toBe(
+            `Mesub error already_prepared: ${message} Refused in the current state, and ` +
+                'nothing was changed: read it again before deciding.',
+        );
+        expect(text(result)).not.toMatch(/slug/);
+    });
 });
