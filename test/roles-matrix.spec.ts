@@ -158,7 +158,12 @@ describe('every tool against every refusal of a role or a scope', () => {
                 });
                 api.calls.length = 0;
 
-                await callTool(server.url, entry.tool, entry.args, bearer(token));
+                const response = await callTool(server.url, entry.tool, entry.args, bearer(token));
+                // A 2025 answer is a stream: its headers come before the tool has run.
+                // Read to its result, then count.
+                expect(await readJsonRpc(response), `${entry.tool} ${code}`).toMatchObject({
+                    result: { isError: true, _meta: { [ERROR_META_KEY]: { code } } },
+                });
 
                 expect(api.projectCalls(), `${entry.tool} ${code}`).toHaveLength(1);
             }
