@@ -66,7 +66,7 @@ describe.each([
     const call = (name: string, args: Record<string, unknown>) =>
         client.callTool({ name, arguments: args });
 
-    it('are listed after ping and search_docs, 23 in all, and nothing else is', async () => {
+    it('are listed after ping and search_docs, 24 in all, and nothing else is', async () => {
         const { tools } = await client.listTools();
 
         expect(tools.map((tool) => tool.name)).toEqual([
@@ -74,7 +74,7 @@ describe.each([
             'search_docs',
             ...CASES.map((entry) => entry.tool),
         ]);
-        expect(tools).toHaveLength(23);
+        expect(tools).toHaveLength(24);
     });
 
     it('carry the four hints as intended, a strict input and an output schema', async () => {

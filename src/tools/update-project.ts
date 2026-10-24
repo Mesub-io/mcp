@@ -12,10 +12,10 @@ export const updateProject = defineTool({
     name: 'update_project',
     title: 'Rename the project',
     description:
-        'Rename the Mesub project this connection is for. The name only: this tool cannot ' +
+        'Rename a Mesub project of the organization. The name only: this tool cannot ' +
         'change the tier or the API key, nor delete the project, and no tool here can. The new name replaces the old one in the dashboard at once. Plans ' +
         'already published keep the old name on chain until the merchant signs an update in ' +
-        'the dashboard. Refused when the account has another project under that name. ' +
+        'the dashboard. Refused when another project of the organization has that name. ' +
         'Returns the project as `get_project` does.',
     inputSchema: z.strictObject({
         name: z

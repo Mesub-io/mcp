@@ -58,15 +58,12 @@ export const getOverview = defineTool({
                 .nullable()
                 .describe(
                     'Whether every project covered retries a failed charge by itself, as its ' +
-                        'tier does. False: on one at least, nothing is retried by itself. Null: ' +
-                        'not known.',
+                        'tier does. False: one at least retries nothing by itself. Null: not known.',
                 ),
             retries_automatic_by_project: z
                 .array(z.object({ ...rowProject, honoured: z.boolean() }))
                 .nullable()
-                .describe(
-                    `The same for each project covered, ${MAX_NESTED_ITEMS} at most. Null: not known.`,
-                ),
+                .describe('The same, project by project. Null: not known.'),
             totals: z
                 .object({ current: totals, previous: totals })
                 .describe('The window, and the one of the same length before it.'),

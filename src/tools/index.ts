@@ -20,6 +20,7 @@ import { getSubscription } from './get-subscription.js';
 import { getWebhookSecret } from './get-webhook-secret.js';
 import { listEvents } from './list-events.js';
 import { listPlans } from './list-plans.js';
+import { listProjects } from './list-projects.js';
 import { listSubscriptions } from './list-subscriptions.js';
 import { listUpcomingCharges } from './list-upcoming-charges.js';
 import { listWebhookDeliveries } from './list-webhook-deliveries.js';
@@ -62,7 +63,8 @@ export type AnyTool = ToolDefinition<any, any>;
 export const TOOLS: readonly AnyTool[] = [
     ping,
     searchDocs,
-    // What reads the project.
+    // What reads the projects.
+    listProjects,
     getProject,
     listPlans,
     getPlan,

@@ -3,8 +3,15 @@ import type { Client } from '@modelcontextprotocol/client';
 import { ERROR_META_KEY } from '../src/tools/result.js';
 import * as answers from './fixtures/agent-answers.js';
 import { ORG_ID, POISON, WEBHOOK_ID } from './fixtures/agent-answers.js';
-import { connect, fakeMesubApi, startServer, type FakeApi, type TestServer } from './helpers.js';
-import { CASES, caseOf, ECHOED, type ToolCase } from './tool-cases.js';
+import {
+    connect,
+    fakeMesubApi,
+    OLDER_API,
+    startServer,
+    type FakeApi,
+    type TestServer,
+} from './helpers.js';
+import { caseOf, ECHOED, PROJECT_CASES, type ToolCase } from './tool-cases.js';
 
 type Result = Awaited<ReturnType<Client['callTool']>>;
 
@@ -18,6 +25,8 @@ const data = (result: Result) => result.structuredContent as any;
 
 /** A token whose connection reaches every project of an organization. */
 const ORG_TOKEN = 'mat_org-wide-access-token_abc123';
+/** A token of an API older than organizations. */
+const OLDER_TOKEN = 'mat_older-api-access-token_abc123';
 /** A project argument as an agent may write it: a name with what a query must encode. */
 const GIVEN = 'Fraise & Co =%2F é?#';
 
@@ -51,11 +60,12 @@ describe('the project a tool works on', () => {
             organization: { id: ORG_ID, name: `Fraise & Co ${POISON}` },
             pinned: false,
         });
+        api.issue(OLDER_TOKEN, OLDER_API);
         server = await startServer(
             { MESUB_API_URL: api.url },
             { limits: { perConnection: 100_000 } },
         );
-        older = await connect(server.url, { modern: true });
+        older = await connect(server.url, { modern: true, token: OLDER_TOKEN });
         org = await connect(server.url, { modern: true, token: ORG_TOKEN });
         await older.listTools();
         await org.listTools();
@@ -75,7 +85,7 @@ describe('the project a tool works on', () => {
         client.callTool({ name, arguments: args });
 
     it('sends project as given, and nothing when left out', async () => {
-        for (const entry of CASES) {
+        for (const entry of PROJECT_CASES) {
             api.answer(entry.status, entry.answer);
             const without = await call(org, entry.tool, entry.args);
 
@@ -103,7 +113,7 @@ describe('the project a tool works on', () => {
     });
 
     it('refuses a project argument when the API does not announce org scope', async () => {
-        for (const entry of CASES) {
+        for (const entry of PROJECT_CASES) {
             api.answer(entry.status, echoing(entry, { id: 'proj_1', name: 'Shop' }));
             const result = await call(older, entry.tool, { ...entry.args, project: 'Shop' });
 
@@ -240,7 +250,7 @@ describe('the project a tool works on', () => {
 
     it('refuses a project with a control character, before any call', async () => {
         for (const project of ['Sh\u0000op', 'Shop\n', '\u007f', 'a\tb', '', 'x'.repeat(101), 42]) {
-            for (const entry of CASES) {
+            for (const entry of PROJECT_CASES) {
                 const result = await call(org, entry.tool, { ...entry.args, project });
 
                 expect(result.isError, `${entry.tool} ${JSON.stringify(project)}`).toBe(true);

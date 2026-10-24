@@ -74,12 +74,14 @@ const LISTED = new Set([
     'kind',
     'renewalIssue',
     'owner',
+    'role',
 ]);
 
 /** A copy of an answer where every value out of such a list is `value`. */
 function withListed(answer: unknown, value: string, key?: string): unknown {
     if (Array.isArray(answer)) {
-        return key === 'events' && answer.every((item) => typeof item === 'string')
+        return (key === 'events' || key === 'actions') &&
+            answer.every((item) => typeof item === 'string')
             ? answer.map(() => value)
             : answer.map((item) => withListed(item, value));
     }
@@ -151,7 +153,7 @@ describe('hardening', () => {
 
     it('covers every tool the server has', () => {
         expect(EVERY.map((entry) => entry.tool)).toEqual(TOOLS.map((tool) => tool.name));
-        expect(EVERY).toHaveLength(23);
+        expect(EVERY).toHaveLength(24);
     });
 
     describe('text somebody else wrote, in every field of every answer', () => {
@@ -243,6 +245,7 @@ describe('hardening', () => {
 
         it('says UNKNOWN in a sentence for a state it does not know', async () => {
             const expectations: [string, RegExp][] = [
+                ['list_projects', /as UNKNOWN\./],
                 ['get_project', /on the UNKNOWN tier/],
                 ['update_project', /on the UNKNOWN tier/],
                 ['list_plans', /2 plans: 2 UNKNOWN\./],

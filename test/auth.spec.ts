@@ -14,6 +14,7 @@ import {
     fakeMesubApi,
     INITIALIZE,
     METADATA_URL,
+    OLDER_API,
     post,
     PUBLIC_URL,
     readJsonRpc,
@@ -634,6 +635,7 @@ describe('authorization', () => {
             });
             const probing = await startServer({ MESUB_API_URL: api.url }, { tools: [probe] });
             const issued = api.issue('mat_probe', {
+                ...OLDER_API,
                 connection_id: 'conn_probe',
                 project: { id: 'proj_42', name: 'Fraise' },
                 client: { id: 'mcp_abc', name: 'An agent' },
@@ -726,6 +728,7 @@ describe('authorization', () => {
         it("accepts today's whoami, without organization", async () => {
             const probing = await startServer({ MESUB_API_URL: api.url }, { tools: [probe] });
             api.issue('mat_today', {
+                ...OLDER_API,
                 connection_id: 'conn_today',
                 project: { id: 'proj_3', name: 'Fraise' },
             });

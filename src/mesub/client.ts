@@ -13,6 +13,7 @@ import {
     agentPlanDetailSchema,
     agentPlansSchema,
     agentProjectSchema,
+    agentProjectsSchema,
     agentSubscriptionPageSchema,
     agentSubscriptionSchema,
     agentUpcomingSchema,
@@ -37,6 +38,7 @@ import {
     type AgentOverview,
     type AgentPlanDetail,
     type AgentProject,
+    type AgentProjects,
     type AgentSubscription,
     type AgentSubscriptionPage,
     type AgentUpcomingLine,
@@ -237,6 +239,11 @@ export class MesubClient {
     // agent, and carries the `project` the agent named, as it named it, or
     // none: the API decides which project the connection reaches. No method
     // sends the token's own project.
+
+    /** `GET /agent/projects`: the organization, the person's role in it, and its projects. */
+    projects(scope: Scope = {}): Promise<AgentProjects> {
+        return this.#agent('GET', '/agent/projects', scope, { schema: agentProjectsSchema });
+    }
 
     /** `GET /agent/project`. */
     project(scope: Scope = {}): Promise<AgentProject> {

@@ -27,6 +27,16 @@ export const HOOK_URL = 'https://hooks.example.test/mesub';
 
 export const CASES: ToolCase[] = [
     {
+        tool: 'list_projects',
+        args: {},
+        method: 'GET',
+        pathname: '/agent/projects',
+        query: {},
+        body: undefined,
+        status: 200,
+        answer: answers.agentProjects,
+    },
+    {
         tool: 'get_project',
         args: {},
         method: 'GET',
@@ -268,6 +278,9 @@ export const ECHOED = [
     'prepare_plan',
 ];
 
+/** The tools that take `project`: all but `list_projects`, which lists what it may be. */
+export const PROJECT_CASES = CASES.filter((entry) => entry.tool !== 'list_projects');
+
 export const caseOf = (tool: string): ToolCase => {
     const found = CASES.find((entry) => entry.tool === tool);
     if (!found) throw new Error(`No case for ${tool}.`);
@@ -279,6 +292,7 @@ export const ANNOTATIONS: Record<string, [boolean, boolean, boolean, boolean]> =
     //                          readOnly destructive idempotent openWorld
     ping: [true, false, true, false],
     search_docs: [true, false, true, false],
+    list_projects: [true, false, true, false],
     get_project: [true, false, true, false],
     list_plans: [true, false, true, false],
     get_plan: [true, false, true, false],

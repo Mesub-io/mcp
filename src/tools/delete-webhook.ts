@@ -22,10 +22,7 @@ export const deleteWebhook = defineTool({
         project: z
             .string()
             .nullable()
-            .describe(
-                'The `project` argument as it was sent, null when left out. Mesub answers a ' +
-                    'deletion with nothing: it does not confirm the project.',
-            ),
+            .describe('The `project` argument as sent, or null: Mesub does not confirm it.'),
     }),
     annotations: {
         readOnlyHint: false,

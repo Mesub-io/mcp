@@ -22,6 +22,8 @@ interface Scenario {
         /** It asks the merchant, and waits, before the first call that changes something. */
         ask_first: boolean;
         says: string;
+        /** Arguments a good agent gives, by tool: those that matter to the scenario. */
+        args?: Record<string, Record<string, unknown>>;
     };
 }
 
@@ -37,6 +39,8 @@ const firstSentence = (text: string) => text.split(/(?<=[.:])\s/)[0] ?? '';
 
 /** Two tools an agent could take for one another: the first must send to the second by name. */
 const CONFUSABLE: [string, string][] = [
+    ['list_projects', 'get_project'],
+    ['get_project', 'list_projects'],
     ['list_plans', 'get_plan'],
     ['get_plan', 'list_plans'],
     ['list_plans', 'prepare_plan'],
@@ -103,7 +107,7 @@ describe('the descriptions an agent chooses from', () => {
         }
     });
 
-    it('are long enough to choose from and short enough to read among 23', () => {
+    it('are long enough to choose from and short enough to read among them all', () => {
         for (const tool of TOOLS) {
             expect(tool.description.length, tool.name).toBeGreaterThan(200);
             // prepare_plan carries the two questions an agent must ask before calling it.
@@ -113,7 +117,8 @@ describe('the descriptions an agent chooses from', () => {
             expect(tool.title.length, tool.name).toBeLessThan(50);
         }
         const all = TOOLS.reduce((sum, tool) => sum + tool.description.length, 0);
-        expect(all).toBeLessThan(18_000);
+        // What v0.1.2 allowed a tool on average, 18 000 for 23, for each tool there is.
+        expect(all).toBeLessThan(Math.round((18_000 / 23) * TOOLS.length));
     });
 
     it('have a title no other tool has', () => {
@@ -281,6 +286,31 @@ describe('the scenarios in evals/', () => {
         const fields = injections.map((scenario) => scenario.injected?.field).join(' ');
         expect(fields).toMatch(/name/);
         expect(fields).toMatch(/external_id/);
+    });
+
+    it('give only arguments the tool takes, to a tool they call', () => {
+        const given = scenarios.filter((scenario) => scenario.expect.args !== undefined);
+
+        expect(given.length).toBeGreaterThan(1);
+        for (const scenario of given) {
+            for (const [name, args] of Object.entries(scenario.expect.args ?? {})) {
+                expect(scenario.expect.calls, scenario.id).toContain(name);
+                const parsed = byName.get(name)?.inputSchema.safeParse(args);
+                expect(parsed?.success, `${scenario.id}: ${name}`).toBe(true);
+            }
+        }
+    });
+
+    it('pick list_projects for "which projects can you see", get_project with project for "what tier is Shop on"', () => {
+        const which = scenarios.find((scenario) => scenario.id === 'projects-list');
+        expect(which?.prompt).toMatch(/which projects can you see/i);
+        expect(which?.expect.calls).toEqual(['list_projects']);
+        expect(which?.expect.never).toContain('get_project');
+
+        const tier = scenarios.find((scenario) => scenario.id === 'project-tier-by-name');
+        expect(tier?.prompt).toMatch(/what tier is Shop on/i);
+        expect(tier?.expect.calls).toEqual(['get_project']);
+        expect(tier?.expect.args).toEqual({ get_project: { project: 'Shop' } });
     });
 
     it('never have prepare_plan given a raw amount, an address or an end', () => {

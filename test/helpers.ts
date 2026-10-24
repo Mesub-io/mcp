@@ -43,14 +43,17 @@ export interface FakeApiCall {
     headers: IncomingHttpHeaders;
 }
 
+/** What a whoami of an API older than organizations leaves out, for `issue`. */
+export const OLDER_API = { organization: undefined, pinned: undefined } as const;
+
 export interface FakeConnection {
     connection_id: string;
     /** Null: the connection reaches every project of its organization. */
     project: { id: string; name: string } | null;
     /** Absent from an API older than organizations. */
-    organization?: { id: string; name: string };
+    organization?: { id: string; name: string } | undefined;
     /** Whether the connection is held to its project. Absent from an older API. */
-    pinned?: boolean;
+    pinned?: boolean | undefined;
     client: { id: string; name: string };
     scope: string;
     audience: string;
@@ -200,6 +203,9 @@ export async function fakeMesubApi(): Promise<FakeApi> {
             const connection: FakeConnection = {
                 connection_id: `conn_${connections.size + 1}`,
                 project: { id: 'proj_1', name: 'Fraise' },
+                // As the API serves it since teams v1: a connection pinned to its project.
+                organization: { id: 'corg0000000000000000001', name: 'Fraise & Co' },
+                pinned: true,
                 client: { id: 'mcp_client_1', name: 'Test agent' },
                 scope: 'mesub',
                 audience: RESOURCE,

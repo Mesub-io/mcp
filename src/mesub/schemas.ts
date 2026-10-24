@@ -63,6 +63,8 @@ export const SUBSCRIPTION_STATUSES = [
     'SUPERSEDED',
 ] as const;
 export const TIERS = ['FREE', 'DEV', 'BUSINESS'] as const;
+/** A person's place in an organization, read on every call. */
+export const ROLES = ['OWNER', 'ADMIN', 'MEMBER'] as const;
 export const PULL_OUTCOMES = ['PAID', 'SKIPPED', 'REJECTED', 'BLOCKED'] as const;
 export const SUBSCRIPTION_BUCKETS = [
     'all',
@@ -326,6 +328,23 @@ export type AgentProject = z.infer<typeof agentProjectSchema>;
 export const renamedProjectSchema = servedProjectSchema.extend({ project: projectEcho });
 export type RenamedProject = z.infer<typeof renamedProjectSchema>;
 export type ServedProject = z.infer<typeof servedProjectSchema>;
+
+/**
+ * `GET /agent/projects`: the organization the connection reaches, the
+ * person's role in it and what the role allows, and every project the
+ * connection reaches, newest first, none left out: what `project` takes.
+ */
+export const agentProjectsSchema = z.object({
+    organization: z.object({
+        id,
+        name: text(MAX_NAME_LENGTH),
+        role: code(),
+        actions: z.array(code()),
+    }),
+    pinnedProjectId: id.nullable(),
+    projects: z.array(z.object({ id, name: text(MAX_NAME_LENGTH), tier })),
+});
+export type AgentProjects = z.infer<typeof agentProjectsSchema>;
 
 /** A plan, as every route that answers one serves it. */
 export const agentPlanSchema = z.object({

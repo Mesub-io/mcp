@@ -58,7 +58,9 @@ Every input field has a `.describe()`: it is the only documentation the agent ge
 ### Size
 
 - Every list is capped (`src/tools/limits.ts`) and the result says so: `truncated`, `has_more`, and how to get the rest. A list the API serves whole is cut with `capped()` then `fit()`.
+- One list is returned whole: `list_projects`. An agent names a project from it, and one left out would read as one that does not exist.
 - The registry refuses a result past `HARD_RESULT_LENGTH` (`result_too_large`): the net, not the plan.
+- The tool list is sent to the model on every turn. `test/mcp.spec.ts` holds its growth since v0.1.2 to 8000 characters: a field served on many results (`rowProject`) goes undescribed, and a description repeated in many schemas is the first to shorten.
 
 ### Annotations
 

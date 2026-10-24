@@ -62,9 +62,9 @@ export const MAX_PROJECT_LENGTH = 100;
 export const projectInput = (rule: ProjectRule) =>
     z
         .string()
-        .min(1)
         .max(MAX_PROJECT_LENGTH)
+        // One character at least, none of them a control character.
         // eslint-disable-next-line no-control-regex
-        .regex(/^[^\u0000-\u001f\u007f]+$/, 'No control characters.')
+        .regex(/^[^\u0000-\u001f\u007f]+$/, 'One character at least, and no control characters.')
         .describe(`${NAMED} ${LEFT_OUT[rule]}`)
         .optional();

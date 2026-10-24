@@ -159,6 +159,22 @@ export const preparedPlan = {
 /** The wallet of the organization that signs its plans. */
 export const TEAM_WALLET = 'HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH';
 export const ORG_ID = 'corg0000000000000000001';
+/** What `GET /agent/projects` answers for an org-wide connection: the organization, the role, the projects. */
+export const agentProjects = {
+    organization: {
+        id: ORG_ID,
+        name: `Fraise & Co ${POISON}`,
+        personal: false,
+        role: 'ADMIN',
+        actions: ['project.read', 'project.rename', 'webhook.manage', 'plan.prepare'],
+    },
+    pinnedProjectId: null,
+    projects: [
+        { id: 'proj_2', name: `Shop ${POISON}`, tier: 'FREE' },
+        { id: 'proj_1', name: `Fraise ${POISON}`, tier: 'DEV' },
+    ],
+};
+
 /** The plan's entry in To sign, where the holder of the team wallet signs it. */
 export const TO_SIGN_URL = `${SITE}/to-sign/cpa00000000000000000001`;
 /** What `POST /agent/plans` answers since it names who signs, and where (teams v1). */
