@@ -11,7 +11,6 @@ import {
     agentEventLinesSchema,
     agentOverviewSchema,
     agentPlanDetailSchema,
-    agentPlanSchema,
     agentPlansSchema,
     agentProjectSchema,
     agentSubscriptionPageSchema,
@@ -22,9 +21,11 @@ import {
     nothingSchema,
     preparedPlanSchema,
     renamedProjectSchema,
+    retriedSubscriptionSchema,
+    retryPolicyPlanSchema,
+    testDeliverySchema,
+    updatedWebhookSchema,
     webhookDeliveryPageSchema,
-    webhookDeliverySchema,
-    webhookEndpointSchema,
     webhookEndpointsSchema,
     webhookEndpointWithSecretSchema,
     webhookSecretSchema,
@@ -34,7 +35,6 @@ import {
     type AgentEventLine,
     type AgentListedPlan,
     type AgentOverview,
-    type AgentPlan,
     type AgentPlanDetail,
     type AgentProject,
     type AgentSubscription,
@@ -43,8 +43,11 @@ import {
     type AgentWhoami,
     type ApiHealth,
     type PreparedPlan,
-    type ServedProject,
-    type WebhookDelivery,
+    type RenamedProject,
+    type RetriedSubscription,
+    type RetryPolicyPlan,
+    type TestDelivery,
+    type UpdatedWebhook,
     type WebhookDeliveryPage,
     type WebhookEndpoint,
     type WebhookEndpointWithSecret,
@@ -87,7 +90,7 @@ type Credentials = 'agent' | 'none';
 interface CallOptions<T> {
     /** `agent`: the agent's token AND the service secret. `none`: a public route. */
     as: Credentials;
-    query?: Record<string, QueryValue>;
+    query?: Record<string, QueryValue> | undefined;
     body?: unknown;
     /** What a 2xx must look like. */
     schema: z.ZodType<T>;
@@ -166,6 +169,18 @@ export type AccessQuery = {
     attempts?: boolean | undefined;
 };
 
+/**
+ * What every call to a route of a project carries besides its own arguments.
+ * Left out, `project` is not sent, and the API falls back on the pin, or the
+ * organization's only project, or every project, as the tool's rule says.
+ */
+export interface Scope {
+    /** The project the agent named, its id or its name, sent as the `project` query parameter. */
+    project?: string | undefined;
+    /** The tool call's own signal: a caller that leaves stops the call. */
+    signal?: AbortSignal | undefined;
+}
+
 /** What narrows `GET /agent/events`. */
 export type EventsQuery = {
     plan?: string | undefined;
@@ -219,30 +234,26 @@ export class MesubClient {
     }
 
     // The routes under /agent, one method each. Every one is made as the
-    // agent: the project is the token's, and no method takes its id.
+    // agent, and carries the `project` the agent named, as it named it, or
+    // none: the API decides which project the connection reaches. No method
+    // sends the token's own project.
 
     /** `GET /agent/project`. */
-    project(signal?: AbortSignal): Promise<AgentProject> {
-        return this.#call('GET', '/agent/project', {
-            as: 'agent',
-            schema: agentProjectSchema,
-            signal,
-        });
+    project(scope: Scope = {}): Promise<AgentProject> {
+        return this.#agent('GET', '/agent/project', scope, { schema: agentProjectSchema });
     }
 
     /** `PATCH /agent/project`: the name, and nothing else. */
-    renameProject(name: string, signal?: AbortSignal): Promise<ServedProject> {
-        return this.#call('PATCH', '/agent/project', {
-            as: 'agent',
+    renameProject(name: string, scope: Scope = {}): Promise<RenamedProject> {
+        return this.#agent('PATCH', '/agent/project', scope, {
             body: { name },
             schema: renamedProjectSchema,
-            signal,
         });
     }
 
     /** `GET /agent/plans`. */
-    plans(signal?: AbortSignal): Promise<AgentListedPlan[]> {
-        return this.#call('GET', '/agent/plans', { as: 'agent', schema: agentPlansSchema, signal });
+    plans(scope: Scope = {}): Promise<AgentListedPlan[]> {
+        return this.#agent('GET', '/agent/plans', scope, { schema: agentPlansSchema });
     }
 
     /**
@@ -264,22 +275,18 @@ export class MesubClient {
             /** ISO 8601, UTC. Left out: no end. */
             endsAt?: string | undefined;
         },
-        signal?: AbortSignal,
+        scope: Scope = {},
     ): Promise<PreparedPlan> {
-        return this.#call('POST', '/agent/plans', {
-            as: 'agent',
+        return this.#agent('POST', '/agent/plans', scope, {
             body: plan,
             schema: preparedPlanSchema,
-            signal,
         });
     }
 
     /** `GET /agent/plans/:id`. */
-    plan(planId: string, signal?: AbortSignal): Promise<AgentPlanDetail> {
-        return this.#call('GET', `/agent/plans/${pathSegment(planId)}`, {
-            as: 'agent',
+    plan(planId: string, scope: Scope = {}): Promise<AgentPlanDetail> {
+        return this.#agent('GET', `/agent/plans/${pathSegment(planId)}`, scope, {
             schema: agentPlanDetailSchema,
-            signal,
         });
     }
 
@@ -287,13 +294,11 @@ export class MesubClient {
     updateRetryPolicy(
         planId: string,
         policy: { retryAttempts: number; retryDelayMinutes: number } | Record<string, never>,
-        signal?: AbortSignal,
-    ): Promise<AgentPlan> {
-        return this.#call('PATCH', `/agent/plans/${pathSegment(planId)}/retry-policy`, {
-            as: 'agent',
+        scope: Scope = {},
+    ): Promise<RetryPolicyPlan> {
+        return this.#agent('PATCH', `/agent/plans/${pathSegment(planId)}/retry-policy`, scope, {
             body: policy,
-            schema: agentPlanSchema,
-            signal,
+            schema: retryPolicyPlanSchema,
         });
     }
 
@@ -307,77 +312,57 @@ export class MesubClient {
             page?: number | undefined;
             limit?: number | undefined;
         },
-        signal?: AbortSignal,
+        scope: Scope = {},
     ): Promise<AgentSubscriptionPage> {
-        return this.#call('GET', '/agent/subscriptions', {
-            as: 'agent',
+        return this.#agent('GET', '/agent/subscriptions', scope, {
             query,
             schema: agentSubscriptionPageSchema,
-            signal,
         });
     }
 
     /** `GET /agent/subscriptions/:id`. */
-    subscription(subscriptionId: string, signal?: AbortSignal): Promise<AgentSubscription> {
-        return this.#call('GET', `/agent/subscriptions/${pathSegment(subscriptionId)}`, {
-            as: 'agent',
+    subscription(subscriptionId: string, scope: Scope = {}): Promise<AgentSubscription> {
+        return this.#agent('GET', `/agent/subscriptions/${pathSegment(subscriptionId)}`, scope, {
             schema: agentSubscriptionSchema,
-            signal,
         });
     }
 
     /** `POST /agent/subscriptions/:id/retry`: charges a subscriber. No body. */
-    retryCharge(subscriptionId: string, signal?: AbortSignal): Promise<AgentSubscription> {
-        return this.#call('POST', `/agent/subscriptions/${pathSegment(subscriptionId)}/retry`, {
-            as: 'agent',
-            schema: agentSubscriptionSchema,
-            signal,
-        });
+    retryCharge(subscriptionId: string, scope: Scope = {}): Promise<RetriedSubscription> {
+        return this.#agent(
+            'POST',
+            `/agent/subscriptions/${pathSegment(subscriptionId)}/retry`,
+            scope,
+            { schema: retriedSubscriptionSchema },
+        );
     }
 
     /** `GET /agent/access` with a plan: one answer. */
-    access(query: AccessQuery & { plan: string }, signal?: AbortSignal): Promise<AccessAnswer> {
-        return this.#call('GET', '/agent/access', {
-            as: 'agent',
-            query,
-            schema: agentAccessSchema,
-            signal,
-        });
+    access(query: AccessQuery & { plan: string }, scope: Scope = {}): Promise<AccessAnswer> {
+        return this.#agent('GET', '/agent/access', scope, { query, schema: agentAccessSchema });
     }
 
     /** `GET /agent/access` without a plan: every plan the customer has. */
-    accessList(query: AccessQuery, signal?: AbortSignal): Promise<AccessList> {
-        return this.#call('GET', '/agent/access', {
-            as: 'agent',
+    accessList(query: AccessQuery, scope: Scope = {}): Promise<AccessList> {
+        return this.#agent('GET', '/agent/access', scope, {
             query,
             schema: agentAccessListSchema,
-            signal,
         });
     }
 
     /** `GET /agent/events` without a day: the days that had anything, ten a page. */
     eventDays(
         query: EventsQuery & { days?: number | undefined; page?: number | undefined },
-        signal?: AbortSignal,
+        scope: Scope = {},
     ): Promise<AgentEventDays> {
-        return this.#call('GET', '/agent/events', {
-            as: 'agent',
-            query,
-            schema: agentEventDaysSchema,
-            signal,
-        });
+        return this.#agent('GET', '/agent/events', scope, { query, schema: agentEventDaysSchema });
     }
 
     /** `GET /agent/events?day=`: that day, week or month in full. */
-    eventsOn(
-        query: EventsQuery & { day: string },
-        signal?: AbortSignal,
-    ): Promise<AgentEventLine[]> {
-        return this.#call('GET', '/agent/events', {
-            as: 'agent',
+    eventsOn(query: EventsQuery & { day: string }, scope: Scope = {}): Promise<AgentEventLine[]> {
+        return this.#agent('GET', '/agent/events', scope, {
             query,
             schema: agentEventLinesSchema,
-            signal,
         });
     }
 
@@ -389,48 +374,35 @@ export class MesubClient {
             group?: string | undefined;
             q?: string | undefined;
         },
-        signal?: AbortSignal,
+        scope: Scope = {},
     ): Promise<AgentUpcomingLine[]> {
-        return this.#call('GET', '/agent/events/upcoming', {
-            as: 'agent',
+        return this.#agent('GET', '/agent/events/upcoming', scope, {
             query,
             schema: agentUpcomingSchema,
-            signal,
         });
     }
 
     /** `GET /agent/overview`. */
     overview(
         query: { plan?: string | undefined; days?: number | undefined },
-        signal?: AbortSignal,
+        scope: Scope = {},
     ): Promise<AgentOverview> {
-        return this.#call('GET', '/agent/overview', {
-            as: 'agent',
-            query,
-            schema: agentOverviewSchema,
-            signal,
-        });
+        return this.#agent('GET', '/agent/overview', scope, { query, schema: agentOverviewSchema });
     }
 
     /** `GET /agent/webhooks`. */
-    webhooks(signal?: AbortSignal): Promise<WebhookEndpoint[]> {
-        return this.#call('GET', '/agent/webhooks', {
-            as: 'agent',
-            schema: webhookEndpointsSchema,
-            signal,
-        });
+    webhooks(scope: Scope = {}): Promise<WebhookEndpoint[]> {
+        return this.#agent('GET', '/agent/webhooks', scope, { schema: webhookEndpointsSchema });
     }
 
     /** `POST /agent/webhooks`: answers the endpoint with its secret in clear. */
     createWebhook(
         body: { url: string; events: readonly string[]; enabled?: boolean | undefined },
-        signal?: AbortSignal,
+        scope: Scope = {},
     ): Promise<WebhookEndpointWithSecret> {
-        return this.#call('POST', '/agent/webhooks', {
-            as: 'agent',
+        return this.#agent('POST', '/agent/webhooks', scope, {
             body,
             schema: webhookEndpointWithSecretSchema,
-            signal,
         });
     }
 
@@ -442,31 +414,25 @@ export class MesubClient {
             events?: readonly string[] | undefined;
             enabled?: boolean | undefined;
         },
-        signal?: AbortSignal,
-    ): Promise<WebhookEndpoint> {
-        return this.#call('PATCH', `/agent/webhooks/${pathSegment(endpointId)}`, {
-            as: 'agent',
+        scope: Scope = {},
+    ): Promise<UpdatedWebhook> {
+        return this.#agent('PATCH', `/agent/webhooks/${pathSegment(endpointId)}`, scope, {
             body,
-            schema: webhookEndpointSchema,
-            signal,
+            schema: updatedWebhookSchema,
         });
     }
 
-    /** `DELETE /agent/webhooks/:endpointId`: 204. */
-    async deleteWebhook(endpointId: string, signal?: AbortSignal): Promise<void> {
-        await this.#call('DELETE', `/agent/webhooks/${pathSegment(endpointId)}`, {
-            as: 'agent',
+    /** `DELETE /agent/webhooks/:endpointId`: 204, which names no project. */
+    async deleteWebhook(endpointId: string, scope: Scope = {}): Promise<void> {
+        await this.#agent('DELETE', `/agent/webhooks/${pathSegment(endpointId)}`, scope, {
             schema: nothingSchema,
-            signal,
         });
     }
 
     /** `GET /agent/webhooks/:endpointId/secret`: the signing secret in clear. Never logged. */
-    webhookSecret(endpointId: string, signal?: AbortSignal): Promise<{ secret: string }> {
-        return this.#call('GET', `/agent/webhooks/${pathSegment(endpointId)}/secret`, {
-            as: 'agent',
+    webhookSecret(endpointId: string, scope: Scope = {}): Promise<{ secret: string }> {
+        return this.#agent('GET', `/agent/webhooks/${pathSegment(endpointId)}/secret`, scope, {
             schema: webhookSecretSchema,
-            signal,
         });
     }
 
@@ -477,27 +443,28 @@ export class MesubClient {
     regenerateWebhookSecret(
         endpointId: string,
         overlapHours: number | undefined,
-        signal?: AbortSignal,
+        scope: Scope = {},
     ): Promise<WebhookEndpointWithSecret> {
-        return this.#call('POST', `/agent/webhooks/${pathSegment(endpointId)}/secret/regenerate`, {
-            as: 'agent',
-            body: overlapHours === undefined ? undefined : { overlapHours },
-            schema: webhookEndpointWithSecretSchema,
-            signal,
-        });
+        return this.#agent(
+            'POST',
+            `/agent/webhooks/${pathSegment(endpointId)}/secret/regenerate`,
+            scope,
+            {
+                body: overlapHours === undefined ? undefined : { overlapHours },
+                schema: webhookEndpointWithSecretSchema,
+            },
+        );
     }
 
     /** `GET /agent/webhooks/:endpointId/deliveries`. */
     webhookDeliveries(
         endpointId: string,
         query: { limit?: number | undefined; startingAfter?: string | undefined },
-        signal?: AbortSignal,
+        scope: Scope = {},
     ): Promise<WebhookDeliveryPage> {
-        return this.#call('GET', `/agent/webhooks/${pathSegment(endpointId)}/deliveries`, {
-            as: 'agent',
+        return this.#agent('GET', `/agent/webhooks/${pathSegment(endpointId)}/deliveries`, scope, {
             query,
             schema: webhookDeliveryPageSchema,
-            signal,
         });
     }
 
@@ -505,12 +472,29 @@ export class MesubClient {
     sendTestWebhook(
         endpointId: string,
         body: { event?: string | undefined },
-        signal?: AbortSignal,
-    ): Promise<WebhookDelivery> {
-        return this.#call('POST', `/agent/webhooks/${pathSegment(endpointId)}/test`, {
-            as: 'agent',
+        scope: Scope = {},
+    ): Promise<TestDelivery> {
+        return this.#agent('POST', `/agent/webhooks/${pathSegment(endpointId)}/test`, scope, {
             body,
-            schema: webhookDeliverySchema,
+            schema: testDeliverySchema,
+        });
+    }
+
+    /**
+     * A call to a route of a project, as the agent: the one place `project`
+     * is put on a request, in the query, under that literal name and last,
+     * so no other parameter can stand for it.
+     */
+    #agent<T>(
+        method: string,
+        path: string,
+        { project, signal }: Scope,
+        options: Pick<CallOptions<T>, 'query' | 'body' | 'schema'>,
+    ): Promise<T> {
+        return this.#call(method, path, {
+            ...options,
+            as: 'agent',
+            query: project === undefined ? options.query : { ...options.query, project },
             signal,
         });
     }

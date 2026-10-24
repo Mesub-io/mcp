@@ -37,6 +37,14 @@ import { updateRetryPolicy } from './update-retry-policy.js';
 import { updateWebhook } from './update-webhook.js';
 import type { ToolDefinition } from './tool.js';
 
+/**
+ * What a tool called with `project` answers when the API names no
+ * organization for the token: an API older than organizations reads no
+ * `project`, and would act on the token's project whatever was named.
+ */
+export const ORG_SCOPE_UNAVAILABLE =
+    'This Mesub API reaches one project per connection: call again without project.';
+
 export interface ToolDependencies {
     logger: Logger;
     /** The Mesub API as the caller holding this token. */
@@ -119,6 +127,13 @@ function register<Input extends z.ZodObject, Output extends z.ZodObject>(
                 });
             }
 
+            // Nothing is sent to an API that would not read it. The arguments
+            // were validated: `project` is there only for a tool that takes it.
+            const named = (args as { project?: unknown }).project;
+            if (named !== undefined && caller.organizationId === null) {
+                throw new ToolRefusal('org_scope_unavailable', ORG_SCOPE_UNAVAILABLE);
+            }
+
             // The SDK has validated the arguments against the input schema.
             // The token stops here: a tool gets who it stands for, and a client
             // that carries it, never the token itself.
@@ -146,6 +161,15 @@ function register<Input extends z.ZodObject, Output extends z.ZodObject>(
             // expired in between. Said to the seam, which answers as it does a dead token.
             if (error instanceof MesubApiError && error.code === 'invalid_agent_token') {
                 markTokenRefused(authInfo);
+            }
+            // A write that went through in another project than the one named: Mesub's
+            // fault, never the caller's, and nothing this server can undo.
+            if (error instanceof ToolRefusal && error.code === 'project_mismatch') {
+                logger.error('tool call acted on another project', {
+                    tool: name,
+                    connectionId: caller?.connectionId ?? null,
+                    organizationId: caller?.organizationId ?? null,
+                });
             }
             return failure(error, name, logger);
         } finally {

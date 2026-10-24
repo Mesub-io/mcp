@@ -4,6 +4,7 @@ import { ERROR_META_KEY } from '../src/tools/result.js';
 import {
     PLAN_ID,
     POISON,
+    PROJECT_ECHO,
     refusal,
     SECRET_VALUE,
     SUBSCRIPTION_ID,
@@ -20,7 +21,7 @@ import {
     type FakeApi,
     type TestServer,
 } from './helpers.js';
-import { ANNOTATIONS, CASES, caseOf, HOOK_URL } from './tool-cases.js';
+import { ANNOTATIONS, CASES, caseOf, ECHOED, HOOK_URL } from './tool-cases.js';
 
 type Result = Awaited<ReturnType<Client['callTool']>>;
 
@@ -317,7 +318,10 @@ describe.each([
             expect(line.length).toBeGreaterThan(10);
             // prepare_plan states what a merchant is about to sign: the wallets, the end, the link.
             expect(line.length).toBeLessThan(entry.tool === 'prepare_plan' ? 900 : 600);
-            expect(line).not.toMatch(/poison|IGNORE|Fraise|hooks\.example/i);
+            // A write names the project it acted on, and only between quotes.
+            const echo = JSON.stringify(PROJECT_ECHO.name);
+            if (ECHOED.includes(entry.tool)) expect(line).toContain(echo);
+            expect(line.replaceAll(echo, '""')).not.toMatch(/poison|IGNORE|Fraise|hooks\.example/i);
             for (const value of [WALLET, PLAN_ID, SUBSCRIPTION_ID, WEBHOOK_ID, SECRET_VALUE]) {
                 expect(line).not.toContain(value);
             }

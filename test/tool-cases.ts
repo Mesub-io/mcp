@@ -144,7 +144,7 @@ export const CASES: ToolCase[] = [
         query: {},
         body: { name: 'Fraise & Co' },
         status: 200,
-        answer: answers.servedProject,
+        answer: answers.renamedProject,
     },
     {
         tool: 'update_retry_policy',
@@ -154,7 +154,7 @@ export const CASES: ToolCase[] = [
         query: {},
         body: { retryAttempts: 3, retryDelayMinutes: 60 },
         status: 200,
-        answer: answers.plan,
+        answer: answers.retriedPolicyPlan,
     },
     {
         tool: 'retry_charge',
@@ -164,7 +164,7 @@ export const CASES: ToolCase[] = [
         query: {},
         body: undefined,
         status: 202,
-        answer: answers.subscription,
+        answer: answers.retriedSubscription,
     },
     {
         tool: 'create_webhook',
@@ -174,7 +174,7 @@ export const CASES: ToolCase[] = [
         query: {},
         body: { url: HOOK_URL, events: ['subscription.created'], enabled: false },
         status: 201,
-        answer: answers.webhookWithSecret,
+        answer: answers.echoedWebhookWithSecret,
     },
     {
         tool: 'update_webhook',
@@ -184,7 +184,7 @@ export const CASES: ToolCase[] = [
         query: {},
         body: { enabled: false },
         status: 200,
-        answer: answers.webhook,
+        answer: answers.updatedWebhook,
     },
     {
         tool: 'delete_webhook',
@@ -214,7 +214,7 @@ export const CASES: ToolCase[] = [
         query: {},
         body: undefined,
         status: 201,
-        answer: answers.webhookWithSecret,
+        answer: answers.echoedWebhookWithSecret,
     },
     {
         tool: 'send_test_webhook',
@@ -224,7 +224,7 @@ export const CASES: ToolCase[] = [
         query: {},
         body: { event: 'subscription.created' },
         status: 202,
-        answer: answers.testDelivery,
+        answer: answers.echoedTestDelivery,
     },
     {
         tool: 'prepare_plan',
@@ -254,6 +254,18 @@ export const CASES: ToolCase[] = [
         status: 201,
         answer: answers.teamPreparedPlan,
     },
+];
+
+/** The writes whose answer names the project they acted on: every write but a deletion. */
+export const ECHOED = [
+    'update_project',
+    'update_retry_policy',
+    'retry_charge',
+    'create_webhook',
+    'update_webhook',
+    'regenerate_webhook_secret',
+    'send_test_webhook',
+    'prepare_plan',
 ];
 
 export const caseOf = (tool: string): ToolCase => {

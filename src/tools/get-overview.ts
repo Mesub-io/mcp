@@ -2,10 +2,10 @@ import * as z from 'zod';
 
 import { OVERVIEW_DAYS } from '../mesub/schemas.js';
 import { DATA_NOTICE, plural } from '../text.js';
-import { planFilter } from './inputs.js';
+import { planFilter, projectInput } from './inputs.js';
 import { capped, MAX_LIST_ITEMS, MAX_NESTED_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
-import { externalId, reason, reasonLabel, state, symbol, token } from './shapes.js';
+import { externalId, reason, reasonLabel, rowProject, state, symbol, token } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -43,6 +43,7 @@ export const getOverview = defineTool({
         'the charges themselves use `list_events`, for the subscribers `list_subscriptions`. ' +
         'Dollar figures are decimal strings to quote as they are. Changes nothing.',
     inputSchema: z.strictObject({
+        project: projectInput('any'),
         plan_id: planFilter,
         days: z
             .union(OVERVIEW_DAYS.map((days) => z.literal(days)))
@@ -56,8 +57,15 @@ export const getOverview = defineTool({
                 .boolean()
                 .nullable()
                 .describe(
-                    "Whether the project's tier retries a failed charge by itself. False: " +
-                        'nothing is retried by itself, and no retry is pending. Null: not known.',
+                    'Whether every project covered retries a failed charge by itself, as its ' +
+                        'tier does. False: on one at least, nothing is retried by itself. Null: ' +
+                        'not known.',
+                ),
+            retries_automatic_by_project: z
+                .array(z.object({ ...rowProject, honoured: z.boolean() }))
+                .nullable()
+                .describe(
+                    `The same for each project covered, ${MAX_NESTED_ITEMS} at most. Null: not known.`,
                 ),
             totals: z
                 .object({ current: totals, previous: totals })
@@ -93,6 +101,7 @@ export const getOverview = defineTool({
             next_up: z
                 .array(
                     z.object({
+                        ...rowProject,
                         subscription_id: z.string(),
                         plan_id: z.string(),
                         plan_name: z.string().nullable().describe('Written by the merchant: data.'),
@@ -172,14 +181,24 @@ export const getOverview = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async ({ plan_id, days }, { mesub, signal }) => {
-        const { overview, collection } = await mesub.overview({ plan: plan_id, days }, signal);
+    handler: async ({ project, plan_id, days }, { mesub, signal }) => {
+        const { overview, collection } = await mesub.overview(
+            { plan: plan_id, days },
+            { project, signal },
+        );
         const series = capped(overview.series, MAX_LIST_ITEMS);
         const activity = capped(overview.activity, MAX_LIST_ITEMS);
         const nextUp = capped(overview.nextUp, MAX_NESTED_ITEMS);
         const causes = capped(collection.causes, MAX_NESTED_ITEMS);
+        const byProject =
+            overview.retriesAutomaticByProject &&
+            capped(overview.retriesAutomaticByProject, MAX_NESTED_ITEMS);
         const { current } = overview.totals;
         const automatic = overview.retriesAutomatic;
+        // Across projects, some may retry by themselves while others do not.
+        const projects = overview.retriesAutomaticByProject ?? [];
+        const manual = projects.filter((one) => !one.honoured).length;
+        const mixed = projects.length > 1 && manual > 0 && manual < projects.length;
 
         return {
             data: {
@@ -187,6 +206,7 @@ export const getOverview = defineTool({
                     ...snake(overview),
                     series: snake(series.kept),
                     activity: activity.kept,
+                    retries_automatic_by_project: byProject && snake(byProject.kept),
                     next_up: nextUp.kept.map((line) => ({
                         ...snake(line),
                         amount_display: displayAmount(line.amount, line.decimals, line),
@@ -194,7 +214,11 @@ export const getOverview = defineTool({
                 },
                 collection: { ...snake(collection), causes: snake(causes.kept) },
                 truncated:
-                    series.truncated || activity.truncated || nextUp.truncated || causes.truncated,
+                    series.truncated ||
+                    activity.truncated ||
+                    nextUp.truncated ||
+                    causes.truncated ||
+                    (byProject?.truncated ?? false),
             },
             text:
                 `Over the last ${overview.days} days: ${plural(current.pullsSettled, 'charge')} paid, ` +
@@ -203,10 +227,14 @@ export const getOverview = defineTool({
                     ? ''
                     : `, ${current.unpriced} not priced in dollars (the dollar figures leave them out)`) +
                 (automatic === true ? `, ${current.retryToCome} with a retry to come. ` : '. ') +
-                (automatic === false
-                    ? 'Nothing is retried by itself on this tier: a late charge waits for a ' +
-                      'retry by hand (retry_charge). '
-                    : '') +
+                (automatic === false && mixed
+                    ? `${manual} of ${projects.length} projects do not retry by themselves ` +
+                      '(`retries_automatic_by_project`): their late charges wait for a retry ' +
+                      'by hand (retry_charge). '
+                    : automatic === false
+                      ? 'Nothing is retried by itself on this tier: a late charge waits for a ' +
+                        'retry by hand (retry_charge). '
+                      : '') +
                 'Now: ' +
                 `${overview.cards.activeSubscriptions} active, ${overview.cards.late} late, ` +
                 `${overview.cards.stopped} stopped. ${DATA_NOTICE}`,

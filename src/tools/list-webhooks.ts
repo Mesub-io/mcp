@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
 import { DATA_NOTICE, plural } from '../text.js';
+import { projectInput } from './inputs.js';
 import { capped, MAX_LIST_ITEMS } from './limits.js';
 import { webhookOut, webhookOutput } from './shapes.js';
 import { defineTool } from './tool.js';
@@ -16,7 +17,7 @@ export const listWebhooks = defineTool({
         'working". For what was sent to one and what it answered use ' +
         '`list_webhook_deliveries`. It never returns a signing secret, only a hint of it: ' +
         '`get_webhook_secret` returns the secret. Changes nothing.',
-    inputSchema: z.strictObject({}),
+    inputSchema: z.strictObject({ project: projectInput('one') }),
     outputSchema: z.object({
         webhooks: z.array(webhookOutput).describe('Oldest first. A project holds 16 at most.'),
         total: z.number(),
@@ -28,8 +29,8 @@ export const listWebhooks = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async (_args, { mesub, signal }) => {
-        const all = await mesub.webhooks(signal);
+    handler: async ({ project }, { mesub, signal }) => {
+        const all = await mesub.webhooks({ project, signal });
         const { kept, truncated } = capped(all, MAX_LIST_ITEMS);
 
         return {

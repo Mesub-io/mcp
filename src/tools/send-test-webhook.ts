@@ -2,7 +2,8 @@ import * as z from 'zod';
 
 import { DELIVERY_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, known } from '../text.js';
-import { deliveryOut, deliveryOutput } from './shapes.js';
+import { projectInput } from './inputs.js';
+import { actedOn, actedOnOutput, deliveryOut, deliveryOutput, inProject } from './shapes.js';
 import { defineTool } from './tool.js';
 import { webhookEvent, webhookId } from './webhook-inputs.js';
 
@@ -27,8 +28,9 @@ export const sendTestWebhook = defineTool({
                 'A sample of this event, which the endpoint must take. Left out: the plain ' +
                     '`test` event.',
             ),
+        project: projectInput('write'),
     }),
-    outputSchema: z.object({ delivery: deliveryOutput }),
+    outputSchema: z.object({ delivery: deliveryOutput, project: actedOnOutput }),
     annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -36,11 +38,17 @@ export const sendTestWebhook = defineTool({
         // It makes Mesub call the merchant's server.
         openWorldHint: true,
     },
-    handler: async ({ webhook_id, event }, { mesub, signal }) => {
-        const delivery = await mesub.sendTestWebhook(webhook_id, { event }, signal);
+    handler: async ({ webhook_id, event, project: named }, { mesub, signal }) => {
+        const { project: echo, ...delivery } = await mesub.sendTestWebhook(
+            webhook_id,
+            { event },
+            { project: named, signal },
+        );
+        const project = actedOn(named, echo);
         return {
-            data: { delivery: deliveryOut(delivery) },
+            data: { delivery: deliveryOut(delivery), project },
             text:
+                inProject(project) +
                 `The test delivery is queued, status ${known(delivery.status, DELIVERY_STATUSES)}. Read ` +
                 `list_webhook_deliveries in a moment for what the endpoint answered. ${DATA_NOTICE}`,
         };

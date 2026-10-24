@@ -1,8 +1,8 @@
 import * as z from 'zod';
 
 import { DATA_NOTICE } from '../text.js';
-import { idInput } from './inputs.js';
-import { planOut, planOutput } from './shapes.js';
+import { idInput, projectInput } from './inputs.js';
+import { actedOn, actedOnOutput, inProject, planOut, planOutput } from './shapes.js';
 import { defineTool } from './tool.js';
 
 /** Mesub's own policy, for a plan that names none (the API's pull.constants and retry-policy). */
@@ -53,6 +53,7 @@ export const updateRetryPolicy = defineTool({
                     `Minutes between two tries, ${MIN_RETRY_DELAY_MINUTES} at least. With ` +
                         '`retry_attempts`, or left out with it.',
                 ),
+            project: projectInput('write'),
         })
         .refine(
             (args) =>
@@ -62,7 +63,7 @@ export const updateRetryPolicy = defineTool({
                     'Send both retry_attempts and retry_delay_minutes, or neither to clear the policy.',
             },
         ),
-    outputSchema: z.object({ plan: planOutput }),
+    outputSchema: z.object({ plan: planOutput, project: actedOnOutput }),
     annotations: {
         readOnlyHint: false,
         // The policy the plan had is overwritten, and with it when wallets are charged again.
@@ -70,22 +71,27 @@ export const updateRetryPolicy = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async ({ plan_id, retry_attempts, retry_delay_minutes }, { mesub, signal }) => {
-        const plan = await mesub.updateRetryPolicy(
+    handler: async (
+        { plan_id, retry_attempts, retry_delay_minutes, project: named },
+        { mesub, signal },
+    ) => {
+        const { project: echo, ...plan } = await mesub.updateRetryPolicy(
             plan_id,
             retry_attempts === undefined || retry_delay_minutes === undefined
                 ? {}
                 : { retryAttempts: retry_attempts, retryDelayMinutes: retry_delay_minutes },
-            signal,
+            { project: named, signal },
         );
+        const project = actedOn(named, echo);
         const policy =
             plan.retryAttempts === null
                 ? `the built in policy: ${BUILT_IN_POLICY}`
                 : `${plan.retryAttempts} retries, ${plan.retryDelayMinutes} minutes apart`;
 
         return {
-            data: { plan: planOut(plan) },
+            data: { plan: planOut(plan), project },
             text:
+                inProject(project) +
                 `The plan now has ${policy}.` +
                 (plan.retryPolicy.honoured
                     ? ''

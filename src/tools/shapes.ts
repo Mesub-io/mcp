@@ -10,6 +10,8 @@ import {
     TIERS,
     WEBHOOK_EVENTS,
     DELIVERY_STATUSES,
+    MAX_NAME_LENGTH,
+    type ProjectEcho,
     type AgentAttempt,
     type AgentPlan,
     type AgentSubscription,
@@ -18,10 +20,11 @@ import {
     type WebhookDelivery,
     type WebhookEndpoint,
 } from '../mesub/schemas.js';
-import { known, planEnd } from '../text.js';
+import { clip, known, planEnd, quoted } from '../text.js';
 import { capped, MAX_ATTEMPTS, MAX_EARLIER, MAX_EARLIER_ATTEMPTS } from './limits.js';
 import { displayAmount, type AmountUnit } from './money.js';
 import { periodInWords } from './period.js';
+import { ToolRefusal } from './result.js';
 import { snake } from './snake.js';
 import { TOKEN_SYMBOLS } from './tokens.js';
 
@@ -226,6 +229,58 @@ export const state = (values: readonly string[], more = '') =>
                 'one Mesub added since: report it as it is.',
         );
 
+/**
+ * Which project a row is of, beside its fields: what tells apart the rows of a
+ * read across an organization. Spread into the object of a row.
+ */
+export const rowProject = {
+    project_id: z
+        .string()
+        .nullable()
+        .describe('The project of this row. Null: Mesub does not say.'),
+    project_name: text.nullable(),
+};
+
+/** The project a write acted on, as Mesub answered it, checked against the one named. */
+export const actedOnOutput = z
+    .object({ id: z.string(), name: text })
+    .nullable()
+    .describe('The project Mesub made the change in. Null: Mesub does not say.');
+
+/** A write Mesub says it made in another project than the one named. */
+export const projectMismatch = () =>
+    new ToolRefusal(
+        'project_mismatch',
+        'Mesub acted on another project than the one named. Tell the merchant and stop.',
+    );
+const UNSAID =
+    'Mesub did not say which project it acted on, and one was named. Tell the merchant and stop.';
+
+/**
+ * The project a write acted on, from its answer's echo, once checked against
+ * the `project` the agent named: the same id, or else the same name in any
+ * case, as the API matches a name. A difference, or no echo when one was
+ * named, is `project_mismatch`: the change went through, somewhere, and is
+ * never presented as made where it was asked. Named nothing: the API chose
+ * the pin, and the echo is said as it is.
+ */
+export function actedOn(
+    named: string | undefined,
+    echo: ProjectEcho | null,
+): z.input<typeof actedOnOutput> {
+    if (named !== undefined) {
+        if (echo === null) throw new ToolRefusal('project_mismatch', UNSAID);
+        const same = echo.id === named || echo.name.toLowerCase() === named.toLowerCase();
+        if (!same) throw projectMismatch();
+    }
+    return echo && { id: echo.id, name: clip(echo.name, MAX_NAME_LENGTH) };
+}
+
+/** What a write's sentence opens with: the project it acted on, quoted. Empty when unknown. */
+export function inProject(project: { name: string } | null): string {
+    return project === null ? '' : `Project acted on: ${quoted(project.name)}. `;
+}
+
 export const projectOutput = z.object({
     id: z.string(),
     name: text,
@@ -382,6 +437,7 @@ export function attemptOut(
 }
 
 export const subscriptionRowOutput = z.object({
+    ...rowProject,
     id: z.string(),
     subscriber: z.string().describe('The wallet that pays.'),
     external_id: externalId,

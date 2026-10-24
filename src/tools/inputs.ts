@@ -36,3 +36,35 @@ export const JOURNAL_DAYS = 45;
 
 export const daysInput = (what: string) =>
     z.number().int().min(1).max(MAX_DAYS).default(30).describe(what);
+
+/**
+ * Which project a tool falls back on when `project` is left out, as the API
+ * decides it (its `AGENT_TOOL_PROJECT`): every project the connection
+ * reaches, the pin or the organization's only one, or the pin alone.
+ */
+export type ProjectRule = 'any' | 'one' | 'write';
+
+const NAMED = 'The project: its id or exact name, from `list_projects`.';
+const LEFT_OUT: Record<ProjectRule, string> = {
+    any: 'Left out: every project this connection reaches.',
+    one: "Left out: the pinned project, or the organization's only one.",
+    write: 'Required unless the connection is pinned to one project.',
+};
+
+/** The longest id or name sent: past any name the dashboard takes. */
+export const MAX_PROJECT_LENGTH = 100;
+
+/**
+ * The project a tool works on, sent as it is in the `project` query
+ * parameter. The API decides what the connection reaches: this server never
+ * picks one, and never sends the one of the token.
+ */
+export const projectInput = (rule: ProjectRule) =>
+    z
+        .string()
+        .min(1)
+        .max(MAX_PROJECT_LENGTH)
+        // eslint-disable-next-line no-control-regex
+        .regex(/^[^\u0000-\u001f\u007f]+$/, 'No control characters.')
+        .describe(`${NAMED} ${LEFT_OUT[rule]}`)
+        .optional();

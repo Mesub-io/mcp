@@ -2,7 +2,7 @@ import * as z from 'zod';
 
 import { DELIVERY_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, plural, tally } from '../text.js';
-import { idInput } from './inputs.js';
+import { idInput, projectInput } from './inputs.js';
 import { fit } from './limits.js';
 import { deliveryOut, deliveryOutput } from './shapes.js';
 import { defineTool } from './tool.js';
@@ -36,6 +36,7 @@ export const listWebhookDeliveries = defineTool({
         starting_after: idInput(
             'The `next_starting_after` of the previous page, to get the one after it.',
         ).optional(),
+        project: projectInput('one'),
     }),
     outputSchema: z.object({
         deliveries: z.array(deliveryOutput),
@@ -51,11 +52,11 @@ export const listWebhookDeliveries = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async ({ webhook_id, limit, starting_after }, { mesub, signal }) => {
+    handler: async ({ webhook_id, limit, starting_after, project }, { mesub, signal }) => {
         const page = await mesub.webhookDeliveries(
             webhook_id,
             { limit, startingAfter: starting_after },
-            signal,
+            { project, signal },
         );
         const deliveries = page.deliveries.map(deliveryOut);
         const data = {

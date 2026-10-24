@@ -1,5 +1,6 @@
 import * as z from 'zod';
 
+import { projectInput } from './inputs.js';
 import { defineTool } from './tool.js';
 import { webhookId } from './webhook-inputs.js';
 
@@ -14,10 +15,17 @@ export const deleteWebhook = defineTool({
         'the URL of the endpoint (`list_webhooks`). To pause an endpoint and keep it, use ' +
         '`update_webhook` with `enabled: false` instead. Creating one again gives a new id ' +
         'and a new secret.',
-    inputSchema: z.strictObject({ webhook_id: webhookId }),
+    inputSchema: z.strictObject({ webhook_id: webhookId, project: projectInput('write') }),
     outputSchema: z.object({
         deleted: z.boolean(),
         webhook_id: z.string().describe('The id that was asked for, which no longer exists.'),
+        project: z
+            .string()
+            .nullable()
+            .describe(
+                'The `project` argument as it was sent, null when left out. Mesub answers a ' +
+                    'deletion with nothing: it does not confirm the project.',
+            ),
     }),
     annotations: {
         readOnlyHint: false,
@@ -26,10 +34,11 @@ export const deleteWebhook = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async ({ webhook_id }, { mesub, signal }) => {
-        await mesub.deleteWebhook(webhook_id, signal);
+    handler: async ({ webhook_id, project }, { mesub, signal }) => {
+        await mesub.deleteWebhook(webhook_id, { project, signal });
         return {
-            data: { deleted: true, webhook_id },
+            // What was sent, never said to be where it was deleted: the API does not echo it.
+            data: { deleted: true, webhook_id, project: project ?? null },
             text: 'The webhook endpoint was deleted: Mesub posts nothing to it any more.',
         };
     },

@@ -61,8 +61,10 @@ const NO_END = 'It has no end date: it runs until the merchant closes it.';
  * The whole sentence of a plan prepared as `PRO`, with what it says of the
  * wallets and of the end, and the To sign link when Mesub served one.
  */
-const sentenceOf = (wallets: string, end: string, toSign?: string) =>
-    `Prepared, NOT published: plan "Pro" at 9.99 USDC every month (30 days). ${wallets} ${end} ` +
+const sentenceOf = (wallets: string, end: string, toSign?: string, project?: string) =>
+    `Prepared, NOT published: plan "Pro" ` +
+    `${project === undefined ? '' : `in the project ${JSON.stringify(project)}, `}` +
+    `at 9.99 USDC every month (30 days). ${wallets} ${end} ` +
     'Nothing is on chain: nobody can subscribe or be charged until whoever holds the ' +
     `organization's team wallet signs it, from ${SITE}/dashboard#plans/publish/${PREPARED_ID} , ` +
     'where the merchant reviews it and can still edit it, or from To sign in the dashboard' +
@@ -202,6 +204,7 @@ describe('prepare_plan', () => {
                     'destinations',
                     'paid_wallet',
                     'ends_at',
+                    'project',
                 ].sort(),
             );
             expect(schema.required.sort()).toEqual(['name', 'period_hours', 'price', 'token']);
@@ -430,11 +433,14 @@ describe('prepare_plan', () => {
 
             const data = await prepared(PRO);
 
-            expect(Object.keys(data).sort()).toEqual(['next_step', 'plan', 'sign_url']);
-            // get_plan carries the links in its plan; prepare_plan beside it.
+            expect(Object.keys(data).sort()).toEqual(['next_step', 'plan', 'project', 'sign_url']);
+            // An API older than the echo names no project.
+            expect(data.project).toBeNull();
+            // get_plan carries the links and the project in its plan; prepare_plan beside it.
+            const beside = ['sign_url', 'to_sign_url', 'project_id', 'project_name'];
             expect(Object.keys(data.plan).sort()).toEqual(
                 Object.keys(read.plan)
-                    .filter((key) => key !== 'sign_url' && key !== 'to_sign_url')
+                    .filter((key) => !beside.includes(key))
                     .sort(),
             );
             expect(data.plan).toMatchObject({
@@ -577,10 +583,14 @@ describe('prepare_plan', () => {
             expect(Object.keys(data).sort()).toEqual([
                 'next_step',
                 'plan',
+                'project',
                 'sign_url',
                 'to_sign_url',
             ]);
-            expect(sentence(result)).toBe(sentenceOf(TEAM_PAYS, NO_END, TO_SIGN_URL));
+            expect(data.project).toEqual(answers.PROJECT_ECHO);
+            expect(sentence(result)).toBe(
+                sentenceOf(TEAM_PAYS, NO_END, TO_SIGN_URL, answers.PROJECT_ECHO.name),
+            );
             // The signer and the organization are read, and not passed on.
             expect(JSON.stringify(result)).not.toContain(TEAM_WALLET);
             expect(JSON.stringify(result)).not.toContain('Fraise & Co');
@@ -596,7 +606,9 @@ describe('prepare_plan', () => {
                 expect(result.structuredContent, String(toSignUrl)).not.toHaveProperty(
                     'to_sign_url',
                 );
-                expect(sentence(result)).toBe(sentenceOf(TEAM_PAYS, NO_END));
+                expect(sentence(result)).toBe(
+                    sentenceOf(TEAM_PAYS, NO_END, undefined, answers.PROJECT_ECHO.name),
+                );
             }
         });
 

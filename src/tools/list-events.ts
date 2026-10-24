@@ -2,10 +2,16 @@ import * as z from 'zod';
 
 import { EVENT_BUCKETS, EVENT_GROUPS } from '../mesub/schemas.js';
 import { DATA_NOTICE, plural } from '../text.js';
-import { JOURNAL_DAYS, planFilter, searchInput, SIGNATURE_PREFIX_MIN } from './inputs.js';
+import {
+    JOURNAL_DAYS,
+    planFilter,
+    projectInput,
+    searchInput,
+    SIGNATURE_PREFIX_MIN,
+} from './inputs.js';
 import { capped, fit, MAX_LIST_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
-import { externalId, reason, reasonLabel, state, symbol, token } from './shapes.js';
+import { externalId, reason, reasonLabel, rowProject, state, symbol, token } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -44,6 +50,7 @@ export const listEvents = defineTool({
         `${JOURNAL_DAYS} days: older is out of reach, not empty. Changes nothing.`,
     inputSchema: z
         .strictObject({
+            project: projectInput('any'),
             day: z
                 .string()
                 .regex(/^\d{4}-\d{2}-\d{2}$/, 'A date as YYYY-MM-DD.')
@@ -125,6 +132,7 @@ export const listEvents = defineTool({
         events: z
             .array(
                 z.object({
+                    ...rowProject,
                     id: z.string(),
                     source: state(['pull', 'event'], '`pull`: a charge. `event`: anything else.'),
                     type: z
@@ -187,11 +195,14 @@ export const listEvents = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async ({ day, plan_id, group: only, q, by, days, page }, { mesub, signal }) => {
+    handler: async (
+        { project, day, plan_id, group: only, q, by, days, page },
+        { mesub, signal },
+    ) => {
         const scope = { plan: plan_id, group: only, q, by };
 
         if (day === undefined) {
-            const found = await mesub.eventDays({ ...scope, days, page }, signal);
+            const found = await mesub.eventDays({ ...scope, days, page }, { project, signal });
             const unpriced = found.days.filter((one) => (one.failedUnpriced ?? 0) > 0);
             return {
                 data: {
@@ -219,7 +230,7 @@ export const listEvents = defineTool({
         }
 
         const reach = reachOf(day, by);
-        const lines = await mesub.eventsOn({ ...scope, day }, signal);
+        const lines = await mesub.eventsOn({ ...scope, day }, { project, signal });
         const { kept, truncated } = capped(lines, MAX_LIST_ITEMS);
         const events = kept.map((line) => ({
             ...snake(line),

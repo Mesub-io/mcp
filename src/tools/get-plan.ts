@@ -2,7 +2,7 @@ import * as z from 'zod';
 
 import { PLAN_STATUSES, PULL_OUTCOMES, SUBSCRIPTION_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, known, plural } from '../text.js';
-import { idInput } from './inputs.js';
+import { idInput, projectInput } from './inputs.js';
 import { capped, MAX_NESTED_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
 import {
@@ -13,6 +13,7 @@ import {
     planOutput,
     reason,
     reasonLabel,
+    rowProject,
     signUrl,
     toSignUrl,
 } from './shapes.js';
@@ -37,9 +38,10 @@ export const getPlan = defineTool({
         'quote that one. Changes nothing.',
     inputSchema: z.strictObject({
         plan_id: idInput('The id of the plan, as `list_plans` returns it. Not its slug.'),
+        project: projectInput('any'),
     }),
     outputSchema: z.object({
-        plan: planOutput.extend({ sign_url: signUrl, to_sign_url: toSignUrl }),
+        plan: planOutput.extend({ ...rowProject, sign_url: signUrl, to_sign_url: toSignUrl }),
         subscribers_by_status: z
             .record(z.string(), z.number())
             .describe(
@@ -101,8 +103,8 @@ export const getPlan = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async ({ plan_id }, { mesub, signal }) => {
-        const detail = await mesub.plan(plan_id, signal);
+    handler: async ({ plan_id, project }, { mesub, signal }) => {
+        const detail = await mesub.plan(plan_id, { project, signal });
         const { plan } = detail;
         const shown = (amount: string) => displayAmount(amount, plan.decimals, plan);
         const attempts = capped(detail.attempts, MAX_NESTED_ITEMS).kept;
@@ -110,7 +112,13 @@ export const getPlan = defineTool({
 
         return {
             data: {
-                plan: { ...planOut(plan), sign_url: plan.signUrl, to_sign_url: plan.toSignUrl },
+                plan: {
+                    ...planOut(plan),
+                    project_id: plan.projectId,
+                    project_name: plan.projectName,
+                    sign_url: plan.signUrl,
+                    to_sign_url: plan.toSignUrl,
+                },
                 subscribers_by_status: detail.subscribers,
                 monthly: detail.monthly,
                 monthly_display: shown(detail.monthly),

@@ -2,7 +2,7 @@ import * as z from 'zod';
 
 import { SUBSCRIPTION_BUCKETS } from '../mesub/schemas.js';
 import { DATA_NOTICE, plural } from '../text.js';
-import { MAX_DAYS, planFilter, searchInput } from './inputs.js';
+import { MAX_DAYS, planFilter, projectInput, searchInput } from './inputs.js';
 import { subscriptionRowOut, subscriptionRowOutput } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
@@ -28,6 +28,7 @@ export const listSubscriptions = defineTool({
         '`get_subscription`. To ask whether one customer has access use `check_access`. ' +
         'Changes nothing.',
     inputSchema: z.strictObject({
+        project: projectInput('any'),
         plan_id: planFilter,
         status: z
             .enum(SUBSCRIPTION_BUCKETS)
@@ -92,10 +93,10 @@ export const listSubscriptions = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async ({ plan_id, status, q, days, page, limit }, { mesub, signal }) => {
+    handler: async ({ project, plan_id, status, q, days, page, limit }, { mesub, signal }) => {
         const found = await mesub.subscriptions(
             { plan: plan_id, status, q, days, page, limit },
-            signal,
+            { project, signal },
         );
         const more = found.page * found.limit < found.total;
         const blocked = found.rows.filter((row) => row.blockedSince !== null).length;

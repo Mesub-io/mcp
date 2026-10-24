@@ -2,8 +2,15 @@ import * as z from 'zod';
 
 import { SUBSCRIPTION_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, known, plural } from '../text.js';
-import { idInput } from './inputs.js';
-import { blockInWords, subscriptionOut, subscriptionOutput } from './shapes.js';
+import { idInput, projectInput } from './inputs.js';
+import {
+    actedOn,
+    actedOnOutput,
+    blockInWords,
+    inProject,
+    subscriptionOut,
+    subscriptionOutput,
+} from './shapes.js';
 import { defineTool } from './tool.js';
 
 export const retryCharge = defineTool({
@@ -28,8 +35,9 @@ export const retryCharge = defineTool({
         subscription_id: idInput(
             'The id of the late subscription, as `list_subscriptions` returns it.',
         ),
+        project: projectInput('write'),
     }),
-    outputSchema: z.object({ subscription: subscriptionOutput }),
+    outputSchema: z.object({ subscription: subscriptionOutput, project: actedOnOutput }),
     annotations: {
         readOnlyHint: false,
         // It moves a subscriber's money, and a transfer on chain is not undone.
@@ -37,11 +45,17 @@ export const retryCharge = defineTool({
         idempotentHint: false,
         openWorldHint: true,
     },
-    handler: async ({ subscription_id }, { mesub, signal }) => {
-        const subscription = subscriptionOut(await mesub.retryCharge(subscription_id, signal));
+    handler: async ({ subscription_id, project: named }, { mesub, signal }) => {
+        const { project: echo, ...retried } = await mesub.retryCharge(subscription_id, {
+            project: named,
+            signal,
+        });
+        const project = actedOn(named, echo);
+        const subscription = subscriptionOut(retried);
         return {
-            data: { subscription },
+            data: { subscription, project },
             text:
+                inProject(project) +
                 'The charge was queued for a new try: it is not settled yet. The subscription ' +
                 `is ${known(subscription.status, SUBSCRIPTION_STATUSES)}, with ` +
                 `${plural(subscription.failed_pulls, 'failed charge')} on the current period.` +

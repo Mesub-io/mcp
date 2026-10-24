@@ -2,6 +2,7 @@ import * as z from 'zod';
 
 import { ACCESS_STATUSES, PAYMENT_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, known, plural } from '../text.js';
+import { projectInput } from './inputs.js';
 import { capped, MAX_LIST_ITEMS } from './limits.js';
 import {
     blockedReason,
@@ -147,6 +148,7 @@ export const checkAccess = defineTool({
                 .boolean()
                 .optional()
                 .describe('True to also get the last five charges of each plan.'),
+            project: projectInput('one'),
         })
         .refine(
             (args) =>
@@ -169,11 +171,12 @@ export const checkAccess = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async ({ wallet, external_id, email, plan, attempts }, { mesub, signal }) => {
+    handler: async ({ wallet, external_id, email, plan, attempts, project }, { mesub, signal }) => {
         const customer = { wallet, external_id, email, attempts: attempts || undefined };
+        const scope = { project, signal };
 
         if (plan !== undefined) {
-            const answer = await mesub.access({ ...customer, plan }, signal);
+            const answer = await mesub.access({ ...customer, plan }, scope);
             return {
                 data: {
                     plans: [answer],
@@ -188,7 +191,7 @@ export const checkAccess = defineTool({
             };
         }
 
-        const list = await mesub.accessList(customer, signal);
+        const list = await mesub.accessList(customer, scope);
         const { kept, truncated } = capped(list.plans, MAX_LIST_ITEMS);
         const blocked = list.plans.filter((answer) => answer.blocked_since !== null).length;
         return {

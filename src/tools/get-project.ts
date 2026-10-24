@@ -2,6 +2,7 @@ import * as z from 'zod';
 
 import { PLAN_STATUSES, TIERS } from '../mesub/schemas.js';
 import { DATA_NOTICE, known, plural } from '../text.js';
+import { projectInput } from './inputs.js';
 import { capped, MAX_LIST_ITEMS } from './limits.js';
 import { projectOut, projectOutput, state } from './shapes.js';
 import { snake } from './snake.js';
@@ -23,7 +24,7 @@ export const getProject = defineTool({
         '`list_plans`; for revenue and failed charges use `get_overview`. It takes no ' +
         'argument: a connection reads one project, and another needs a new connection. ' +
         'Changes nothing.',
-    inputSchema: z.strictObject({}),
+    inputSchema: z.strictObject({ project: projectInput('one') }),
     outputSchema: z.object({
         project: projectOutput,
         usage: z.object({
@@ -62,8 +63,8 @@ export const getProject = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async (_args, { mesub, signal }) => {
-        const { project, usage } = await mesub.project(signal);
+    handler: async (args, { mesub, signal }) => {
+        const { project, usage } = await mesub.project({ project: args.project, signal });
         const byPlan = capped(usage.byPlan, MAX_LIST_ITEMS);
 
         return {
