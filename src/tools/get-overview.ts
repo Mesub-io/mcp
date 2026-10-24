@@ -223,10 +223,13 @@ export const getOverview = defineTool({
                 (current.unpriced === 0
                     ? ''
                     : `, ${current.unpriced} not priced in dollars (the dollar figures leave them out)`) +
-                (automatic === true ? `, ${current.retryToCome} with a retry to come. ` : '. ') +
+                (automatic === true || mixed
+                    ? `, ${current.retryToCome} with a retry to come. `
+                    : '. ') +
                 (automatic === false && mixed
-                    ? `${manual} of ${projects.length} projects do not retry by themselves ` +
-                      '(`retries_automatic_by_project`): their late charges wait for a retry ' +
+                    ? `${manual} of ${plural(projects.length, 'project')} ` +
+                      `${manual === 1 ? 'does not retry by itself' : 'do not retry by themselves'} ` +
+                      '(`retries_automatic_by_project`): there, a late charge waits for a retry ' +
                       'by hand (retry_charge). '
                     : automatic === false
                       ? 'Nothing is retried by itself on this tier: a late charge waits for a ' +

@@ -24,7 +24,7 @@ import { clip, known, planEnd, quoted } from '../text.js';
 import { capped, MAX_ATTEMPTS, MAX_EARLIER, MAX_EARLIER_ATTEMPTS } from './limits.js';
 import { displayAmount, type AmountUnit } from './money.js';
 import { periodInWords } from './period.js';
-import { ToolRefusal } from './result.js';
+import { ProjectMismatch } from './result.js';
 import { snake } from './snake.js';
 import { TOKEN_SYMBOLS } from './tokens.js';
 
@@ -244,12 +244,11 @@ export const actedOnOutput = z
     .nullable()
     .describe('The project changed. Null: Mesub does not say.');
 
+const MISMATCH = 'Mesub acted on another project than the one named. Tell the merchant and stop.';
+
 /** A write Mesub says it made in another project than the one named. */
-export const projectMismatch = () =>
-    new ToolRefusal(
-        'project_mismatch',
-        'Mesub acted on another project than the one named. Tell the merchant and stop.',
-    );
+export const projectMismatch = (named: string | null, actedOnProjectId: string) =>
+    new ProjectMismatch(MISMATCH, named, actedOnProjectId);
 const UNSAID =
     'Mesub did not say which project it acted on, and one was named. Tell the merchant and stop.';
 
@@ -266,9 +265,9 @@ export function actedOn(
     echo: ProjectEcho | null,
 ): z.input<typeof actedOnOutput> {
     if (named !== undefined) {
-        if (echo === null) throw new ToolRefusal('project_mismatch', UNSAID);
+        if (echo === null) throw new ProjectMismatch(UNSAID, named, null);
         const same = echo.id === named || echo.name.toLowerCase() === named.toLowerCase();
-        if (!same) throw projectMismatch();
+        if (!same) throw projectMismatch(named, echo.id);
     }
     return echo && { id: echo.id, name: clip(echo.name, MAX_NAME_LENGTH) };
 }

@@ -48,7 +48,9 @@ export const updateProject = defineTool({
         // The echo names the project by its name before the rename: what was named.
         const renamed = actedOn(named, echo);
         // The body is the project renamed: it must be the one the echo names.
-        if (renamed !== null && renamed.id !== project.id) throw projectMismatch();
+        if (renamed !== null && renamed.id !== project.id) {
+            throw projectMismatch(named ?? null, renamed.id);
+        }
         return {
             data: { project: projectOut(project) },
             text:

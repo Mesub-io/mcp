@@ -41,7 +41,7 @@ export const agentWhoamiSchema = z.object({
 });
 export type AgentWhoami = z.infer<typeof agentWhoamiSchema>;
 
-// The routes under /agent that read and change the connection's project. An
+// The routes under /agent that read and change the projects of the connection. An
 // answer that does not fit is refused whole (`unexpected`), never passed on.
 // Unknown fields are dropped, as above: the API may add one tomorrow, and it
 // reaches no agent until a schema here names it. Texts somebody else wrote are

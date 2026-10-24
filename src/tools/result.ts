@@ -33,6 +33,22 @@ export class ToolRefusal extends Error {
     }
 }
 
+/**
+ * A write Mesub made, or may have made, in another project than the one
+ * named: what was named and the project the answer echoed, for the log line
+ * only, never for the agent.
+ */
+export class ProjectMismatch extends ToolRefusal {
+    constructor(
+        message: string,
+        /** Null when nothing was named: the answer contradicts itself. */
+        readonly named: string | null,
+        readonly actedOnProjectId: string | null,
+    ) {
+        super('project_mismatch', message);
+    }
+}
+
 interface Refused {
     code: string;
     message: string;

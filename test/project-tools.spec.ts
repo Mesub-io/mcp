@@ -340,7 +340,7 @@ describe.each([
             expect(JSON.stringify(result)).not.toContain(POISON);
         });
 
-        it('refuses an argument it does not take, a project id included, before calling Mesub', async () => {
+        it('refuses an argument it does not take, `project_id` included, before calling Mesub', async () => {
             for (const extra of [{ project_id: 'proj_2' }, { projectId: 'proj_2' }, { x: 1 }]) {
                 const result = await call(entry.tool, { ...entry.args, ...extra });
 

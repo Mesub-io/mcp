@@ -52,6 +52,8 @@ describe('the project a tool works on', () => {
     let older: Client;
     /** On an org-wide connection. */
     let org: Client;
+    /** On a connection pinned to its project, as the API serves it by default. */
+    let pinned: Client;
 
     beforeAll(async () => {
         api = await fakeMesubApi();
@@ -67,11 +69,13 @@ describe('the project a tool works on', () => {
         );
         older = await connect(server.url, { modern: true, token: OLDER_TOKEN });
         org = await connect(server.url, { modern: true, token: ORG_TOKEN });
+        pinned = await connect(server.url, { modern: true });
         await older.listTools();
         await org.listTools();
     });
     afterAll(async () => {
         await older.close();
+        await pinned.close();
         await org.close();
         await server.stop();
         await api.close();
@@ -87,7 +91,10 @@ describe('the project a tool works on', () => {
     it('sends project as given, and nothing when left out', async () => {
         for (const entry of PROJECT_CASES) {
             api.answer(entry.status, entry.answer);
-            const without = await call(org, entry.tool, entry.args);
+            // A change names its project on an org-wide connection: left out, a pinned one.
+            const leftOutBy =
+                ECHOED.includes(entry.tool) || entry.tool === 'delete_webhook' ? pinned : org;
+            const without = await call(leftOutBy, entry.tool, entry.args);
 
             expect(without.isError, entry.tool).toBeFalsy();
             let sent = api.projectCalls();
@@ -121,7 +128,8 @@ describe('the project a tool works on', () => {
             expect(errorOf(result), entry.tool).toMatchObject({
                 code: 'org_scope_unavailable',
                 message:
-                    'This Mesub API reaches one project per connection: call again without project.',
+                    'This Mesub API reaches one project per connection. Call get_project to see ' +
+                    'which, and call again without project only if it is the one meant.',
             });
             expect(api.projectCalls(), entry.tool).toHaveLength(0);
         }
@@ -155,11 +163,11 @@ describe('the project a tool works on', () => {
 
             // Left out: the API chose, the pin, and its answer still says which.
             api.answer(entry.status, entry.answer);
-            const pinned = await call(org, tool, entry.args);
-            expect(actedOnOf(tool, pinned), tool).toEqual(
+            const left = await call(pinned, tool, entry.args);
+            expect(actedOnOf(tool, left), tool).toEqual(
                 tool === 'update_project' ? { id: 'proj_1' } : answers.PROJECT_ECHO,
             );
-            expect(sentence(pinned), tool).toContain(JSON.stringify(answers.PROJECT_ECHO.name));
+            expect(sentence(left), tool).toContain(JSON.stringify(answers.PROJECT_ECHO.name));
             api.calls.length = 0;
         }
     });
@@ -188,10 +196,17 @@ describe('the project a tool works on', () => {
                 expect(api.projectCalls(), tool).toHaveLength(1);
                 api.calls.length = 0;
             }
-            expect(
-                server.logs.filter((line) => line.message === 'tool call acted on another project'),
+            const lines = server.logs.filter(
+                (line) => line.message === 'tool call acted on another project',
+            );
+            expect(lines, tool).toHaveLength(3);
+            expect(lines[0], tool).toMatchObject({
+                level: 'error',
                 tool,
-            ).toHaveLength(3);
+                named: 'Shop',
+                actedOnProjectId: 'proj_3',
+                organizationId: ORG_ID,
+            });
             server.logs.length = 0;
         }
     });
@@ -218,11 +233,36 @@ describe('the project a tool works on', () => {
         }
     });
 
+    it('refuses a change that names no project on an org-wide connection, before any call', async () => {
+        const changes = PROJECT_CASES.filter(
+            (entry) => ECHOED.includes(entry.tool) || entry.tool === 'delete_webhook',
+        );
+        expect(changes).toHaveLength(9);
+        for (const entry of changes) {
+            api.answer(entry.status, entry.answer);
+            const result = await call(org, entry.tool, entry.args);
+
+            expect(result.isError, entry.tool).toBe(true);
+            expect(text(result), entry.tool).toBe(
+                'Mesub error project_required: Name the project: list_projects returns the ' +
+                    'projects of this organization. Call `list_projects`, ask the merchant which ' +
+                    'project when it is not clear, then call again with `project`.',
+            );
+            expect(api.projectCalls(), entry.tool).toHaveLength(0);
+
+            // A pinned connection leaves it to its pin, and a read to every project.
+            expect((await call(pinned, entry.tool, entry.args)).isError, entry.tool).toBeFalsy();
+            api.calls.length = 0;
+        }
+        api.answer(200, caseOf('list_plans').answer);
+        expect((await call(org, 'list_plans', {})).isError).toBeFalsy();
+    });
+
     it('refuses a rename whose echo is not the project it answers', async () => {
         const entry = caseOf('update_project');
         api.answer(200, { ...answers.renamedProject, id: 'proj_2' });
 
-        const result = await call(org, 'update_project', entry.args);
+        const result = await call(pinned, 'update_project', entry.args);
 
         expect(errorOf(result)?.code).toBe('project_mismatch');
         expect(api.projectCalls()).toHaveLength(1);
@@ -236,7 +276,7 @@ describe('the project a tool works on', () => {
             webhook_id: WEBHOOK_ID,
             project: 'Shop',
         });
-        const left = await call(org, 'delete_webhook', { webhook_id: WEBHOOK_ID });
+        const left = await call(pinned, 'delete_webhook', { webhook_id: WEBHOOK_ID });
 
         expect(data(named)).toEqual({ deleted: true, webhook_id: WEBHOOK_ID, project: 'Shop' });
         expect(data(left)).toEqual({ deleted: true, webhook_id: WEBHOOK_ID, project: null });
@@ -339,7 +379,9 @@ describe('the project a tool works on', () => {
             { project_id: 'proj_1', project_name: `Fraise ${POISON}`, honoured: true },
             { project_id: 'proj_2', project_name: 'Shop', honoured: false },
         ]);
-        expect(sentence(result)).toMatch(/1 of 2 projects do not retry by themselves/);
+        expect(sentence(result)).toMatch(
+            /, 1 with a retry to come\. 1 of 2 projects does not retry by itself /,
+        );
         expect(sentence(result)).not.toMatch(/Shop|Fraise/);
     });
 

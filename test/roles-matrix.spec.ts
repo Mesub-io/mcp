@@ -49,6 +49,12 @@ const REFUSALS: [number, string, string, string][] = [
     ],
     [
         400,
+        'project_ambiguous',
+        'Two projects match that name: use the id list_projects returns.',
+        "Call again with the project's id from `list_projects`.",
+    ],
+    [
+        400,
         'project_required',
         'Name the project: list_projects returns the projects of this organization.',
         'Call `list_projects`, ask the merchant which project when it is not clear, then call ' +
