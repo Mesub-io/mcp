@@ -150,12 +150,12 @@ function retryAdvice({ code }: Refused): string | undefined {
 
 /**
  * A member whose role does not allow the call: the message names who may.
- * Nothing the agent can do about it, and connecting again changes nothing.
+ * Every agent tool is open to Admins, and only the Owner changes a role.
  */
 export const ROLE_ADVICE =
     "Nothing was changed. The merchant's role in this organization does not allow this: relay " +
-    'the message as it is. Someone it names can do it, or can give them that role. The same ' +
-    'call gives the same answer until then.';
+    'the message as it is. The Owner or an Admin can do it for them, or the Owner can make them ' +
+    'an Admin. Connecting again changes nothing, and the same call gives the same answer until then.';
 
 /** Which project a call is for, when the connection reaches more than one. */
 const PROJECT_ADVICE: Record<string, string> = {

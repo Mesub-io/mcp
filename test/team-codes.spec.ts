@@ -19,7 +19,7 @@ const PRO = { name: 'Pro', token: 'USDC', price: '9.99', period_hours: 720 };
 const ROLE = 'Only the Owner and Admins can manage webhooks.';
 const NO_TEAM_WALLET =
     'Fraise has no team wallet yet. The Owner sets one in Organization settings.';
-const TEAM_WALLET_URL = `${SITE}/dashboard#settings`;
+const TEAM_WALLET_URL = `${SITE}/dashboard#org-settings/wallet`;
 
 describe('the refusals of an organization', () => {
     let api: FakeApi;
@@ -65,6 +65,10 @@ describe('the refusals of an organization', () => {
             });
         }
         expect(ROLE_ADVICE).not.toMatch(/connect again/i);
+        // Only the Owner changes a role (member.promote is Owner-only).
+        expect(ROLE_ADVICE).toContain('the Owner can make them an Admin');
+        expect(ROLE_ADVICE).not.toMatch(/admins? can (give|grant|change|make)/i);
+        expect(ROLE_ADVICE).not.toMatch(/give them that role/i);
     });
 
     it('relays the team wallet link on team_wallet_required', async () => {
@@ -108,7 +112,7 @@ describe('the refusals of an organization', () => {
         for (const walletUrl of [
             'javascript:alert(1)',
             `${TEAM_WALLET_URL} ${POISON}`,
-            'https://user:pass@mesub.io/dashboard#settings',
+            'https://user:pass@mesub.io/dashboard#org-settings/wallet',
             POISON,
             { href: TEAM_WALLET_URL },
         ]) {
