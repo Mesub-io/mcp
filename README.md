@@ -24,7 +24,7 @@ For a merchant:
 
 1. Add the server's address to your AI tool, as a remote MCP server.
 2. The tool opens a Mesub page in your browser. Sign in to the dashboard.
-3. Choose one project. Nothing is chosen for you.
+3. Under Connect to, find the organization. Choose Whole organization, or pin the agent to one project under Or only one project. Nothing is chosen for you, unless you opened Connect agent inside a project of the dashboard in the last 15 minutes: that project is then the pin, and you can change it.
 4. Read what the page lists, then authorize.
 
 The address:
