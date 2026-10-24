@@ -1,5 +1,6 @@
 import * as z from 'zod';
 
+import { projectInput } from './inputs.js';
 import { secretOutput } from './shapes.js';
 import { defineTool } from './tool.js';
 import { webhookId } from './webhook-inputs.js';
@@ -17,7 +18,7 @@ export const getWebhookSecret = defineTool({
         'it back. To know which secret an endpoint has without revealing it, ' +
         '`list_webhooks` returns a hint. If it may have leaked, replace it with ' +
         '`regenerate_webhook_secret`. Changes nothing.',
-    inputSchema: z.strictObject({ webhook_id: webhookId }),
+    inputSchema: z.strictObject({ webhook_id: webhookId, project: projectInput('one') }),
     outputSchema: z.object({ secret: secretOutput }),
     annotations: {
         // It changes nothing. What it reveals is in the description: no hint says it.
@@ -26,8 +27,8 @@ export const getWebhookSecret = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async ({ webhook_id }, { mesub, signal }) => {
-        const { secret } = await mesub.webhookSecret(webhook_id, signal);
+    handler: async ({ webhook_id, project }, { mesub, signal }) => {
+        const { secret } = await mesub.webhookSecret(webhook_id, { project, signal });
         return {
             data: { secret },
             text:

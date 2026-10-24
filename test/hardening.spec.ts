@@ -74,12 +74,14 @@ const LISTED = new Set([
     'kind',
     'renewalIssue',
     'owner',
+    'role',
 ]);
 
 /** A copy of an answer where every value out of such a list is `value`. */
 function withListed(answer: unknown, value: string, key?: string): unknown {
     if (Array.isArray(answer)) {
-        return key === 'events' && answer.every((item) => typeof item === 'string')
+        return (key === 'events' || key === 'actions') &&
+            answer.every((item) => typeof item === 'string')
             ? answer.map(() => value)
             : answer.map((item) => withListed(item, value));
     }
@@ -151,7 +153,7 @@ describe('hardening', () => {
 
     it('covers every tool the server has', () => {
         expect(EVERY.map((entry) => entry.tool)).toEqual(TOOLS.map((tool) => tool.name));
-        expect(EVERY).toHaveLength(23);
+        expect(EVERY).toHaveLength(24);
     });
 
     describe('text somebody else wrote, in every field of every answer', () => {
@@ -198,8 +200,9 @@ describe('hardening', () => {
                     const data = JSON.stringify(result.structuredContent);
                     if (data.includes('INJECTED x')) expect(data, where).toContain(TRUNCATED);
                     expect(unquoted(sentence(result)), where).not.toMatch(/INJECTED/);
+                    // prepare_plan names the project it was prepared in too, quoted and cut.
                     expect(sentence(result).length, where).toBeLessThan(
-                        entry.tool === 'prepare_plan' ? 900 : 700,
+                        entry.tool === 'prepare_plan' ? 1000 : 700,
                     );
                 }
             },
@@ -242,6 +245,7 @@ describe('hardening', () => {
 
         it('says UNKNOWN in a sentence for a state it does not know', async () => {
             const expectations: [string, RegExp][] = [
+                ['list_projects', /as UNKNOWN\./],
                 ['get_project', /on the UNKNOWN tier/],
                 ['update_project', /on the UNKNOWN tier/],
                 ['list_plans', /2 plans: 2 UNKNOWN\./],
@@ -336,7 +340,8 @@ describe('hardening', () => {
                     at: answers.plan.preparedBy.at,
                 });
                 expect(plan.period_display, tool).toBe('every month (30 days)');
-                expect(sentence(result), tool).not.toMatch(/Helper|IGNORE|fraise/i);
+                // The project a write acted on is the one name it says, between quotes.
+                expect(unquoted(sentence(result)), tool).not.toMatch(/Helper|IGNORE|fraise/i);
             }
         });
 
@@ -405,8 +410,15 @@ describe('hardening', () => {
 
                     expect(result.isError, tool).toBeFalsy();
                     expect(unquoted(sentence(result)), tool).not.toMatch(/INJECTED|ignore all/i);
-                    // Read, and not passed on yet: nowhere in the result.
-                    expect(JSON.stringify(result), tool).not.toMatch(/INJECTED/);
+                    if (tool === 'prepare_plan') {
+                        // Read, and not passed on: nowhere in the result.
+                        expect(JSON.stringify(result), tool).not.toMatch(/INJECTED/);
+                    } else {
+                        // Passed on in its field, cut, and in no sentence.
+                        const [row] = (result.structuredContent as Data).plans;
+                        expect(row.project_name, tool).toBe(clip(written, MAX_NAME_LENGTH));
+                        expect(sentence(result), tool).not.toMatch(/INJECTED/);
+                    }
                 }
             }
 

@@ -1191,7 +1191,11 @@ describe('the project tools, in detail', () => {
 
             const result = await call('delete_webhook', { webhook_id: WEBHOOK_ID });
 
-            expect(result.structuredContent).toEqual({ deleted: true, webhook_id: WEBHOOK_ID });
+            expect(result.structuredContent).toEqual({
+                deleted: true,
+                webhook_id: WEBHOOK_ID,
+                project: null,
+            });
             expect(sentence(result)).toBe(
                 'The webhook endpoint was deleted: Mesub posts nothing to it any more.',
             );

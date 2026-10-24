@@ -1,8 +1,8 @@
 {
   "name": "@mesub/mcp",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
-  "description": "The Mesub MCP server: lets an AI agent read and act on one Mesub project.",
+  "description": "The Mesub MCP server: lets an AI agent read and act on the Mesub projects of an organization.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

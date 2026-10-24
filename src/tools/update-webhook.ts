@@ -1,7 +1,8 @@
 import * as z from 'zod';
 
 import { DATA_NOTICE, plural } from '../text.js';
-import { webhookOut, webhookOutput } from './shapes.js';
+import { projectInput } from './inputs.js';
+import { actedOn, actedOnOutput, inProject, webhookOut, webhookOutput } from './shapes.js';
 import { defineTool } from './tool.js';
 import { webhookEvents, webhookId, webhookUrl } from './webhook-inputs.js';
 
@@ -38,13 +39,14 @@ export const updateWebhook = defineTool({
                 .boolean()
                 .optional()
                 .describe('True to switch it on, false to switch it off. Left out: unchanged.'),
+            project: projectInput('write'),
         })
         .refine(
             (args) =>
                 args.url !== undefined || args.events !== undefined || args.enabled !== undefined,
             { message: 'Send at least one of url, events or enabled.' },
         ),
-    outputSchema: z.object({ webhook: webhookOutput }),
+    outputSchema: z.object({ webhook: webhookOutput, project: actedOnOutput }),
     annotations: {
         readOnlyHint: false,
         // The address and the events it had are overwritten, and data goes elsewhere.
@@ -52,11 +54,17 @@ export const updateWebhook = defineTool({
         idempotentHint: true,
         openWorldHint: true,
     },
-    handler: async ({ webhook_id, url, events, enabled }, { mesub, signal }) => {
-        const endpoint = await mesub.updateWebhook(webhook_id, { url, events, enabled }, signal);
+    handler: async ({ webhook_id, url, events, enabled, project: named }, { mesub, signal }) => {
+        const { project: echo, ...endpoint } = await mesub.updateWebhook(
+            webhook_id,
+            { url, events, enabled },
+            { project: named, signal },
+        );
+        const project = actedOn(named, echo);
         return {
-            data: { webhook: webhookOut(endpoint) },
+            data: { webhook: webhookOut(endpoint), project },
             text:
+                inProject(project) +
                 `Webhook endpoint updated: ${endpoint.enabled ? 'enabled' : 'disabled'}, ` +
                 `${plural(endpoint.events.length, 'event')}` +
                 (endpoint.disabledAt === null

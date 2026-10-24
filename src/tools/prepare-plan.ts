@@ -3,9 +3,10 @@ import * as z from 'zod';
 import { MesubApiError } from '../mesub/errors.js';
 import type { PreparedPlan } from '../mesub/schemas.js';
 import { DATA_NOTICE, planEnd, quoted } from '../text.js';
+import { projectInput } from './inputs.js';
 import { toSmallestUnit } from './money.js';
 import { ToolRefusal } from './result.js';
-import { planOut, planOutput } from './shapes.js';
+import { actedOn, actedOnOutput, planOut, planOutput } from './shapes.js';
 import { defineTool } from './tool.js';
 import {
     forgetNetwork,
@@ -312,6 +313,7 @@ export const preparePlan = defineTool({
                         'time without a zone is refused, and seconds are whole. Mesub refuses ' +
                         'an end less than one period and five minutes away, or more than 100 years away.',
                 ),
+            project: projectInput('write'),
         })
         .refine((args) => toSmallestUnit(args.price, TOKENS[args.token].decimals) !== null, {
             path: ['price'],
@@ -359,6 +361,7 @@ export const preparePlan = defineTool({
                     'team wallet signs it. Absent when this Mesub does not say. Give it as it is.',
             ),
         next_step: z.string().describe('What Mesub says comes next, to relay.'),
+        project: actedOnOutput,
     }),
     annotations: {
         readOnlyHint: false,
@@ -418,7 +421,7 @@ export const preparePlan = defineTool({
                         destinations: args.destinations === undefined ? undefined : destinations,
                         endsAt: end === null ? undefined : iso(end),
                     },
-                    signal,
+                    { project: args.project, signal },
                 );
                 sent = candidate.mint;
                 learnNetwork(candidate);
@@ -436,6 +439,8 @@ export const preparePlan = defineTool({
             throw refusal ?? new ToolRefusal('internal_error', 'No address for that token.');
         }
 
+        // Where it was prepared, first: a plan in another project is presented as nothing.
+        const project = actedOn(args.project, plan.project);
         const differs = differences(plan, {
             mint: sent,
             amount,
@@ -491,10 +496,12 @@ export const preparePlan = defineTool({
                 sign_url: plan.signUrl,
                 ...(toSign !== null && { to_sign_url: toSign }),
                 next_step: plan.nextStep,
+                project,
             },
             // From what Mesub answered, never from the arguments: it is what will be signed.
             text:
                 `Prepared, NOT published: plan ${plan.name === null ? 'without a name' : quoted(plan.name)} ` +
+                (project === null ? '' : `in the project ${quoted(project.name)}, `) +
                 `at ${shown.amount_display} ${shown.period_display}. ${where} ${until} Nothing ` +
                 'is on chain: nobody can subscribe or be charged until whoever holds the ' +
                 // An address stands alone, so that nothing after it is read as part of it.

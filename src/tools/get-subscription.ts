@@ -2,7 +2,7 @@ import * as z from 'zod';
 
 import { SUBSCRIPTION_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, known, plural } from '../text.js';
-import { idInput } from './inputs.js';
+import { idInput, projectInput } from './inputs.js';
 import { blockInWords, subscriptionOut, subscriptionOutput } from './shapes.js';
 import { defineTool } from './tool.js';
 
@@ -24,6 +24,7 @@ export const getSubscription = defineTool({
         'Changes nothing.',
     inputSchema: z.strictObject({
         subscription_id: idInput('The id of the subscription, as `list_subscriptions` returns it.'),
+        project: projectInput('any'),
     }),
     outputSchema: z.object({ subscription: subscriptionOutput }),
     annotations: {
@@ -32,8 +33,10 @@ export const getSubscription = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async ({ subscription_id }, { mesub, signal }) => {
-        const subscription = subscriptionOut(await mesub.subscription(subscription_id, signal));
+    handler: async ({ subscription_id, project }, { mesub, signal }) => {
+        const subscription = subscriptionOut(
+            await mesub.subscription(subscription_id, { project, signal }),
+        );
         return {
             data: { subscription },
             text:

@@ -41,7 +41,7 @@ export const agentWhoamiSchema = z.object({
 });
 export type AgentWhoami = z.infer<typeof agentWhoamiSchema>;
 
-// The routes under /agent that read and change the connection's project. An
+// The routes under /agent that read and change the projects of the connection. An
 // answer that does not fit is refused whole (`unexpected`), never passed on.
 // Unknown fields are dropped, as above: the API may add one tomorrow, and it
 // reaches no agent until a schema here names it. Texts somebody else wrote are
@@ -63,6 +63,8 @@ export const SUBSCRIPTION_STATUSES = [
     'SUPERSEDED',
 ] as const;
 export const TIERS = ['FREE', 'DEV', 'BUSINESS'] as const;
+/** A person's place in an organization, read on every call. */
+export const ROLES = ['OWNER', 'ADMIN', 'MEMBER'] as const;
 export const PULL_OUTCOMES = ['PAID', 'SKIPPED', 'REJECTED', 'BLOCKED'] as const;
 export const SUBSCRIPTION_BUCKETS = [
     'all',
@@ -247,6 +249,27 @@ const organization = z
     .nullish()
     .default(null);
 
+/**
+ * The project a write acted on, as its answer echoes it (teams v1): its id,
+ * and its name as stored when the call began, kept whole to be compared with
+ * the one named. Null from an API older than the echo.
+ */
+const projectEcho = z
+    .object({ id, name: z.string().max(500) })
+    .nullish()
+    .default(null);
+export type ProjectEcho = NonNullable<z.infer<typeof projectEcho>>;
+
+/**
+ * Which project a row is of (teams v1): what tells apart the rows of a read
+ * across an organization. The name is null for a project deleted during the
+ * call, and both are null from an API older than them.
+ */
+const ofProject = {
+    projectId: id.nullish().default(null),
+    projectName: text(MAX_NAME_LENGTH).nullish().default(null),
+};
+
 const planStatus = code();
 const subscriptionStatus = code();
 const tier = code();
@@ -301,9 +324,27 @@ export const agentProjectSchema = z.object({
 });
 export type AgentProject = z.infer<typeof agentProjectSchema>;
 
-/** `PATCH /agent/project`. */
-export const renamedProjectSchema = servedProjectSchema;
+/** `PATCH /agent/project`: the project renamed, and the one it acted on, by its name before. */
+export const renamedProjectSchema = servedProjectSchema.extend({ project: projectEcho });
+export type RenamedProject = z.infer<typeof renamedProjectSchema>;
 export type ServedProject = z.infer<typeof servedProjectSchema>;
+
+/**
+ * `GET /agent/projects`: the organization the connection reaches, the
+ * person's role in it and what the role allows, and every project the
+ * connection reaches, newest first, none left out: what `project` takes.
+ */
+export const agentProjectsSchema = z.object({
+    organization: z.object({
+        id,
+        name: text(MAX_NAME_LENGTH),
+        role: code(),
+        actions: z.array(code()),
+    }),
+    pinnedProjectId: id.nullable(),
+    projects: z.array(z.object({ id, name: text(MAX_NAME_LENGTH), tier })),
+});
+export type AgentProjects = z.infer<typeof agentProjectsSchema>;
 
 /** A plan, as every route that answers one serves it. */
 export const agentPlanSchema = z.object({
@@ -348,6 +389,10 @@ export const agentPlanSchema = z.object({
 });
 export type AgentPlan = z.infer<typeof agentPlanSchema>;
 
+/** `PATCH /agent/plans/:id/retry-policy`: the plan, and the project it acted on. */
+export const retryPolicyPlanSchema = agentPlanSchema.extend({ project: projectEcho });
+export type RetryPolicyPlan = z.infer<typeof retryPolicyPlanSchema>;
+
 /** `POST /agent/plans`: the plan just prepared, and where its merchant signs it. */
 export const preparedPlanSchema = agentPlanSchema.extend({
     signUrl: link,
@@ -355,6 +400,7 @@ export const preparedPlanSchema = agentPlanSchema.extend({
     // The wallet that signs it: the team wallet of its organization. Read, not passed on.
     signer: plain.nullish().default(null),
     organization,
+    project: projectEcho,
     nextStep: text(MAX_REASON_LENGTH),
 });
 export type PreparedPlan = z.infer<typeof preparedPlanSchema>;
@@ -364,9 +410,7 @@ export const agentPlansSchema = z.array(
     agentPlanSchema.extend({
         signUrl,
         toSignUrl,
-        // The project of the row: read, not passed on yet. Null from an older API.
-        projectId: id.nullish().default(null),
-        projectName: text(MAX_NAME_LENGTH).nullish().default(null),
+        ...ofProject,
         subscribers: count,
         collectedThisPeriod: amount,
         collectedThisPeriodUsd: usd,
@@ -393,7 +437,7 @@ export type AgentAttempt = z.infer<typeof attemptSchema>;
 
 /** `GET /agent/plans/:id`. */
 export const agentPlanDetailSchema = z.object({
-    plan: agentPlanSchema.extend({ signUrl, toSignUrl }),
+    plan: agentPlanSchema.extend({ signUrl, toSignUrl, ...ofProject }),
     subscribers: countsByCode(),
     monthly: amount,
     monthlyUsd: usd.nullable(),
@@ -417,6 +461,7 @@ export const agentPlanDetailSchema = z.object({
 export type AgentPlanDetail = z.infer<typeof agentPlanDetailSchema>;
 
 const subscriptionRowSchema = z.object({
+    ...ofProject,
     id,
     subscriber: plain,
     externalId,
@@ -507,6 +552,10 @@ export const agentSubscriptionSchema = subscriptionRowSchema.extend({
 });
 export type AgentSubscription = z.infer<typeof agentSubscriptionSchema>;
 
+/** What `POST /agent/subscriptions/:id/retry` answers: the subscription, and the project it acted on. */
+export const retriedSubscriptionSchema = agentSubscriptionSchema.extend({ project: projectEcho });
+export type RetriedSubscription = z.infer<typeof retriedSubscriptionSchema>;
+
 /** One answer of `GET /agent/access`: the public `/v1/access` contract, snake_case. */
 const accessAnswerSchema = z.object({
     wallet: plain.nullable(),
@@ -586,6 +635,7 @@ export type AgentEventDays = z.infer<typeof agentEventDaysSchema>;
 /** `GET /agent/events?day=`: that day in full. */
 export const agentEventLinesSchema = z.array(
     z.object({
+        ...ofProject,
         id,
         source: code(),
         // An outcome or an event type: a name in capitals, whichever it is.
@@ -622,6 +672,7 @@ export type AgentEventLine = z.infer<typeof agentEventLinesSchema>[number];
 /** `GET /agent/events/upcoming`. */
 export const agentUpcomingSchema = z.array(
     z.object({
+        ...ofProject,
         subscriptionId: id,
         subscriber: plain,
         externalId,
@@ -674,6 +725,17 @@ export const agentOverviewSchema = z.object({
             .boolean()
             .nullish()
             .transform((value) => value ?? null),
+        // The same for each project the overview covers. Null: an API older than the field.
+        retriesAutomaticByProject: z
+            .array(
+                z.object({
+                    projectId: id,
+                    projectName: text(MAX_NAME_LENGTH),
+                    honoured: z.boolean(),
+                }),
+            )
+            .nullish()
+            .default(null),
         totals: z.object({ current: totals, previous: totals }),
         series: z.array(
             z.object({
@@ -701,6 +763,7 @@ export const agentOverviewSchema = z.object({
         }),
         nextUp: z.array(
             z.object({
+                ...ofProject,
                 subscriptionId: id,
                 planId: id,
                 planName: text(MAX_NAME_LENGTH).nullable(),
@@ -768,11 +831,17 @@ export type WebhookEndpoint = z.infer<typeof webhookEndpointSchema>;
 /** `GET /agent/webhooks`. */
 export const webhookEndpointsSchema = z.array(webhookEndpointSchema);
 
+/** `PATCH /agent/webhooks/:endpointId`: the endpoint, and the project it acted on. */
+export const updatedWebhookSchema = webhookEndpointSchema.extend({ project: projectEcho });
+export type UpdatedWebhook = z.infer<typeof updatedWebhookSchema>;
+
 const webhookSecret = z.string().min(1).max(200);
 
 /** `POST /agent/webhooks` and `POST .../secret/regenerate`: the endpoint and its secret in clear. */
 export const webhookEndpointWithSecretSchema = webhookEndpointSchema.extend({
     secret: webhookSecret,
+    // The project it acted on.
+    project: projectEcho,
 });
 export type WebhookEndpointWithSecret = z.infer<typeof webhookEndpointWithSecretSchema>;
 
@@ -797,6 +866,10 @@ export const webhookDeliverySchema = z.object({
     updatedAt: date,
 });
 export type WebhookDelivery = z.infer<typeof webhookDeliverySchema>;
+
+/** `POST /agent/webhooks/:endpointId/test`: the delivery queued, and the project it acted on. */
+export const testDeliverySchema = webhookDeliverySchema.extend({ project: projectEcho });
+export type TestDelivery = z.infer<typeof testDeliverySchema>;
 
 /** `GET /agent/webhooks/:endpointId/deliveries`. */
 export const webhookDeliveryPageSchema = z.object({

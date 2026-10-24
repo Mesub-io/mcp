@@ -43,7 +43,7 @@ describe('the README', () => {
             expect(table.split(`| \`${tool.name}\``).length - 1, tool.name).toBe(1);
         }
         expect(readme).toContain(`${TOOLS.length} tools`);
-        expect(table).toMatch(/\*\*Read\*\* \(14\)/);
+        expect(table).toMatch(/\*\*Read\*\* \(15\)/);
         expect(table).toMatch(/\*\*Act\*\* \(8\)/);
         expect(table).toMatch(/\*\*Prepare\*\* \(1\)/);
     });

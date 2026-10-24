@@ -2,9 +2,10 @@ import * as z from 'zod';
 
 import { PLAN_STATUSES } from '../mesub/schemas.js';
 import { DATA_NOTICE, plural, tally } from '../text.js';
+import { projectInput } from './inputs.js';
 import { capped, fit, MAX_LIST_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
-import { planOut, planOutput, signUrl, toSignUrl } from './shapes.js';
+import { planOut, planOutput, rowProject, signUrl, toSignUrl } from './shapes.js';
 import { defineTool } from './tool.js';
 
 export const listPlans = defineTool({
@@ -20,10 +21,11 @@ export const listPlans = defineTool({
         '`sign_url`, until they do. Every amount comes with ' +
         'a display value such as "9.99 USDC": quote that one, never convert the raw amount ' +
         'yourself. Changes nothing.',
-    inputSchema: z.strictObject({}),
+    inputSchema: z.strictObject({ project: projectInput('any') }),
     outputSchema: z.object({
         plans: z.array(
             planOutput.extend({
+                ...rowProject,
                 sign_url: signUrl,
                 to_sign_url: toSignUrl,
                 subscribers: z.number(),
@@ -43,7 +45,7 @@ export const listPlans = defineTool({
                     .describe('Paid charges not priced in dollars yet: the dollar sum is partial.'),
             }),
         ),
-        total: z.number().describe('How many plans the project has.'),
+        total: z.number().describe('How many plans there are.'),
         truncated: z.boolean().describe('Some were left out of `plans`: the oldest ones.'),
     }),
     annotations: {
@@ -52,11 +54,13 @@ export const listPlans = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async (_args, { mesub, signal }) => {
-        const all = await mesub.plans(signal);
+    handler: async ({ project }, { mesub, signal }) => {
+        const all = await mesub.plans({ project, signal });
         const { kept, truncated } = capped(all, MAX_LIST_ITEMS);
         const plans = kept.map((plan) => ({
             ...planOut(plan),
+            project_id: plan.projectId,
+            project_name: plan.projectName,
             sign_url: plan.signUrl,
             to_sign_url: plan.toSignUrl,
             subscribers: plan.subscribers,

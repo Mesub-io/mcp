@@ -1,7 +1,15 @@
 import * as z from 'zod';
 
 import { DATA_NOTICE } from '../text.js';
-import { secretOutput, webhookOut, webhookOutput } from './shapes.js';
+import { projectInput } from './inputs.js';
+import {
+    actedOn,
+    actedOnOutput,
+    inProject,
+    secretOutput,
+    webhookOut,
+    webhookOutput,
+} from './shapes.js';
 import { defineTool } from './tool.js';
 import { webhookId } from './webhook-inputs.js';
 
@@ -33,8 +41,13 @@ export const regenerateWebhookSecret = defineTool({
                 'How many whole hours, 0 to 24, the old secret keeps signing beside the new ' +
                     'one. Left out: 0, it stops at once. Never above 0 when the old secret leaked.',
             ),
+        project: projectInput('write'),
     }),
-    outputSchema: z.object({ webhook: webhookOutput, secret: secretOutput }),
+    outputSchema: z.object({
+        webhook: webhookOutput,
+        secret: secretOutput,
+        project: actedOnOutput,
+    }),
     annotations: {
         readOnlyHint: false,
         // The secret in use is overwritten, and what verified with it stops, at once or after the overlap.
@@ -42,20 +55,25 @@ export const regenerateWebhookSecret = defineTool({
         idempotentHint: false,
         openWorldHint: false,
     },
-    handler: async ({ webhook_id, overlap_hours }, { mesub, signal }) => {
-        const { secret, ...endpoint } = await mesub.regenerateWebhookSecret(
-            webhook_id,
-            overlap_hours,
+    handler: async ({ webhook_id, overlap_hours, project: named }, { mesub, signal }) => {
+        const {
+            secret,
+            project: echo,
+            ...endpoint
+        } = await mesub.regenerateWebhookSecret(webhook_id, overlap_hours, {
+            project: named,
             signal,
-        );
+        });
+        const project = actedOn(named, echo);
         // Rewritten from a parsed date, so no text of the API's reaches the sentence.
         const ends = Date.parse(endpoint.previousSecretExpiresAt ?? '');
         const until = Number.isNaN(ends)
             ? 'the end of the overlap, as `previous_secret_expires_at` says'
             : new Date(ends).toISOString();
         return {
-            data: { webhook: webhookOut(endpoint), secret },
+            data: { webhook: webhookOut(endpoint), secret, project },
             text:
+                inProject(project) +
                 (endpoint.previousSecretExpiresAt === null
                     ? 'A new signing secret was drawn and the old one no longer works. '
                     : 'A new signing secret was drawn. The old one still signs beside it until ' +

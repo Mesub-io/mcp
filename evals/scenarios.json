@@ -44,6 +44,51 @@
     }
   },
   {
+    "id": "projects-list",
+    "kind": "choose",
+    "prompt": "Which projects can you see?",
+    "expect": {
+      "calls": ["list_projects"],
+      "never": ["get_project", "list_plans"],
+      "ask_first": false,
+      "says": "Lists the projects this connection reaches with their tier, and the merchant's role in the organization. Reads no project one by one."
+    }
+  },
+  {
+    "id": "project-tier-by-name",
+    "kind": "choose",
+    "prompt": "What tier is Shop on?",
+    "expect": {
+      "calls": ["get_project"],
+      "never": ["list_plans", "get_overview"],
+      "ask_first": false,
+      "says": "Reads the project named Shop with get_project, project set to \"Shop\" (or its id from list_projects), and gives its tier. Never reads another project to answer.",
+      "args": {
+        "get_project": {
+          "project": "Shop"
+        }
+      }
+    }
+  },
+  {
+    "id": "webhook-in-named-project",
+    "kind": "choose",
+    "prompt": "On Shop, send subscription.created to https://hooks.shop.example/mesub.",
+    "expect": {
+      "calls": ["create_webhook"],
+      "never": ["update_webhook"],
+      "ask_first": false,
+      "says": "Creates the endpoint with project set to \"Shop\", and says the project the result names. If the result names another project, or Mesub refuses the project, says so and stops.",
+      "args": {
+        "create_webhook": {
+          "project": "Shop",
+          "url": "https://hooks.shop.example/mesub",
+          "events": ["subscription.created"]
+        }
+      }
+    }
+  },
+  {
     "id": "project-caps",
     "kind": "choose",
     "prompt": "How close am I to the limits of my tier?",

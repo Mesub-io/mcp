@@ -50,6 +50,11 @@ export const UNVERIFIED_TOKEN = {
 export const REASON_LABEL = 'The wallet does not hold enough to pay.';
 
 const T = '2026-10-01T12:00:00.000Z';
+
+/** The project a write acted on, as its answer echoes it since teams v1: its name as stored. */
+export const PROJECT_ECHO = { id: 'proj_1', name: `Fraise ${POISON}` };
+/** Which project a row is of, as every read serves it since teams v1. */
+const ofProject = { projectId: 'proj_1', projectName: `Fraise ${POISON}` };
 const LATER = '2026-11-01T12:00:00.000Z';
 
 export const servedProject = {
@@ -65,6 +70,9 @@ export const servedProject = {
     // Not a field this server knows: must reach no agent.
     stripeCustomer: 'cus_must_not_leak',
 };
+
+/** What `PATCH /agent/project` answers: the project renamed, and the one it acted on. */
+export const renamedProject = { ...servedProject, project: PROJECT_ECHO };
 
 export const project = {
     project: servedProject,
@@ -116,6 +124,9 @@ export const plan = {
     preparedByClientName: 'must_not_leak',
 };
 
+/** What `PATCH /agent/plans/:id/retry-policy` answers: the plan, and the project it acted on. */
+export const retriedPolicyPlan = { ...plan, project: PROJECT_ECHO };
+
 /** A plan in a token Mesub does not vouch for: no symbol, no decimals. */
 export const unknownMintPlan = {
     ...plan,
@@ -148,6 +159,22 @@ export const preparedPlan = {
 /** The wallet of the organization that signs its plans. */
 export const TEAM_WALLET = 'HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH';
 export const ORG_ID = 'corg0000000000000000001';
+/** What `GET /agent/projects` answers for an org-wide connection: the organization, the role, the projects. */
+export const agentProjects = {
+    organization: {
+        id: ORG_ID,
+        name: `Fraise & Co ${POISON}`,
+        personal: false,
+        role: 'ADMIN',
+        actions: ['project.read', 'project.rename', 'webhook.manage', 'plan.prepare'],
+    },
+    pinnedProjectId: null,
+    projects: [
+        { id: 'proj_2', name: `Shop ${POISON}`, tier: 'FREE' },
+        { id: 'proj_1', name: `Fraise ${POISON}`, tier: 'DEV' },
+    ],
+};
+
 /** The plan's entry in To sign, where the holder of the team wallet signs it. */
 export const TO_SIGN_URL = `${SITE}/to-sign/cpa00000000000000000001`;
 /** What `POST /agent/plans` answers since it names who signs, and where (teams v1). */
@@ -156,15 +183,14 @@ export const teamPreparedPlan = {
     toSignUrl: TO_SIGN_URL,
     signer: TEAM_WALLET,
     organization: { id: ORG_ID, name: `Fraise & Co ${POISON}` },
+    project: PROJECT_ECHO,
     nextStep:
         "Nothing is on chain yet. Whoever holds the organization's team wallet opens this " +
         'link, reviews the plan and signs it.',
 };
 
 const listed = {
-    // The project of the row, served since teams v1, read and not passed on yet.
-    projectId: 'proj_1',
-    projectName: `Fraise ${POISON}`,
+    ...ofProject,
     subscribers: 12,
     collectedThisPeriod: '119880000',
     collectedThisPeriodUsd: '119.88',
@@ -202,7 +228,7 @@ export const paidAttempt = {
 };
 
 export const planDetail = {
-    plan,
+    plan: { ...plan, ...ofProject },
     subscribers: { ACTIVE: 11, UNPAID: 1 },
     monthly: '119880000',
     monthlyUsd: '119.88',
@@ -224,6 +250,7 @@ export const planDetail = {
 };
 
 export const row = {
+    ...ofProject,
     id: SUBSCRIPTION_ID,
     subscriber: WALLET,
     externalId: EXTERNAL_ID,
@@ -289,6 +316,9 @@ export const subscription = {
     ],
     supersededBy: null,
 };
+
+/** What `POST /agent/subscriptions/:id/retry` answers: the subscription, and the project it acted on. */
+export const retriedSubscription = { ...subscription, project: PROJECT_ECHO };
 
 /** A row paid up, with charges blocked by the plan's own setup. */
 export const blockedRow = {
@@ -417,6 +447,7 @@ export const eventDays = {
 
 export const eventLines = [
     {
+        ...ofProject,
         id: 'catt00000000000000000001',
         source: 'pull',
         type: 'REJECTED',
@@ -439,6 +470,7 @@ export const eventLines = [
         detail: null,
     },
     {
+        ...ofProject,
         id: 'cevt00000000000000000001',
         source: 'event',
         type: 'PLAN_RECEIVER_CHANGED',
@@ -463,6 +495,7 @@ export const eventLines = [
 
 export const upcoming = [
     {
+        ...ofProject,
         subscriptionId: SUBSCRIPTION_ID,
         subscriber: WALLET,
         planId: PLAN_ID,
@@ -481,6 +514,7 @@ export const upcoming = [
         renewalCheckedAt: T,
     },
     {
+        ...ofProject,
         subscriptionId: 'csub00000000000000000003',
         subscriber: WALLET,
         planId: 'cplan0000000000000000002',
@@ -569,6 +603,7 @@ export const overview = {
     overview: {
         days: 30,
         retriesAutomatic: true,
+        retriesAutomaticByProject: [{ ...ofProject, honoured: true }],
         totals: { current: totals, previous: { ...totals, collectedUsd: '299.70' } },
         series: [
             {
@@ -596,6 +631,7 @@ export const overview = {
         },
         nextUp: [
             {
+                ...ofProject,
                 subscriptionId: SUBSCRIPTION_ID,
                 planId: PLAN_ID,
                 planName: `Pro ${POISON}`,
@@ -667,6 +703,10 @@ export const webhooks = [
     },
 ];
 export const webhookWithSecret = { ...webhook, secret: SECRET_VALUE };
+/** What `POST /agent/webhooks` and `.../secret/regenerate` answer since teams v1. */
+export const echoedWebhookWithSecret = { ...webhookWithSecret, project: PROJECT_ECHO };
+/** What `PATCH /agent/webhooks/:id` answers since teams v1. */
+export const updatedWebhook = { ...webhook, project: PROJECT_ECHO };
 
 export const delivery = {
     id: DELIVERY_ID,
@@ -700,6 +740,9 @@ export const testDelivery = {
     lastError: null,
     lastResponseExcerpt: null,
 };
+
+/** What `POST /agent/webhooks/:id/test` answers since teams v1. */
+export const echoedTestDelivery = { ...testDelivery, project: PROJECT_ECHO };
 
 /** An error body, as every refusal of the API is shaped. */
 export const refusal = (

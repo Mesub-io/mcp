@@ -4,6 +4,7 @@ import { ERROR_META_KEY } from '../src/tools/result.js';
 import {
     PLAN_ID,
     POISON,
+    PROJECT_ECHO,
     refusal,
     SECRET_VALUE,
     SUBSCRIPTION_ID,
@@ -20,7 +21,7 @@ import {
     type FakeApi,
     type TestServer,
 } from './helpers.js';
-import { ANNOTATIONS, CASES, caseOf, HOOK_URL } from './tool-cases.js';
+import { ANNOTATIONS, CASES, caseOf, ECHOED, HOOK_URL } from './tool-cases.js';
 
 type Result = Awaited<ReturnType<Client['callTool']>>;
 
@@ -65,7 +66,7 @@ describe.each([
     const call = (name: string, args: Record<string, unknown>) =>
         client.callTool({ name, arguments: args });
 
-    it('are listed after ping and search_docs, 23 in all, and nothing else is', async () => {
+    it('are listed after ping and search_docs, 24 in all, and nothing else is', async () => {
         const { tools } = await client.listTools();
 
         expect(tools.map((tool) => tool.name)).toEqual([
@@ -73,7 +74,7 @@ describe.each([
             'search_docs',
             ...CASES.map((entry) => entry.tool),
         ]);
-        expect(tools).toHaveLength(23);
+        expect(tools).toHaveLength(24);
     });
 
     it('carry the four hints as intended, a strict input and an output schema', async () => {
@@ -317,7 +318,10 @@ describe.each([
             expect(line.length).toBeGreaterThan(10);
             // prepare_plan states what a merchant is about to sign: the wallets, the end, the link.
             expect(line.length).toBeLessThan(entry.tool === 'prepare_plan' ? 900 : 600);
-            expect(line).not.toMatch(/poison|IGNORE|Fraise|hooks\.example/i);
+            // A write names the project it acted on, and only between quotes.
+            const echo = JSON.stringify(PROJECT_ECHO.name);
+            if (ECHOED.includes(entry.tool)) expect(line).toContain(echo);
+            expect(line.replaceAll(echo, '""')).not.toMatch(/poison|IGNORE|Fraise|hooks\.example/i);
             for (const value of [WALLET, PLAN_ID, SUBSCRIPTION_ID, WEBHOOK_ID, SECRET_VALUE]) {
                 expect(line).not.toContain(value);
             }
@@ -336,7 +340,7 @@ describe.each([
             expect(JSON.stringify(result)).not.toContain(POISON);
         });
 
-        it('refuses an argument it does not take, a project id included, before calling Mesub', async () => {
+        it('refuses an argument it does not take, `project_id` included, before calling Mesub', async () => {
             for (const extra of [{ project_id: 'proj_2' }, { projectId: 'proj_2' }, { x: 1 }]) {
                 const result = await call(entry.tool, { ...entry.args, ...extra });
 

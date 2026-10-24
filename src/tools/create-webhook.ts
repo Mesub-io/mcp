@@ -1,7 +1,15 @@
 import * as z from 'zod';
 
 import { DATA_NOTICE, plural } from '../text.js';
-import { secretOutput, webhookOut, webhookOutput } from './shapes.js';
+import { projectInput } from './inputs.js';
+import {
+    actedOn,
+    actedOnOutput,
+    inProject,
+    secretOutput,
+    webhookOut,
+    webhookOutput,
+} from './shapes.js';
 import { defineTool } from './tool.js';
 import { webhookEvents, webhookUrl } from './webhook-inputs.js';
 
@@ -44,8 +52,13 @@ export const createWebhook = defineTool({
             .boolean()
             .optional()
             .describe('False to create it switched off. Enabled when left out.'),
+        project: projectInput('write'),
     }),
-    outputSchema: z.object({ webhook: webhookOutput, secret: secretOutput }),
+    outputSchema: z.object({
+        webhook: webhookOutput,
+        secret: secretOutput,
+        project: actedOnOutput,
+    }),
     annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -53,11 +66,17 @@ export const createWebhook = defineTool({
         // From now on Mesub posts to a server outside it.
         openWorldHint: true,
     },
-    handler: async ({ url, events, enabled }, { mesub, signal }) => {
-        const { secret, ...endpoint } = await mesub.createWebhook({ url, events, enabled }, signal);
+    handler: async ({ url, events, enabled, project: named }, { mesub, signal }) => {
+        const {
+            secret,
+            project: echo,
+            ...endpoint
+        } = await mesub.createWebhook({ url, events, enabled }, { project: named, signal });
+        const project = actedOn(named, echo);
         return {
-            data: { webhook: webhookOut(endpoint), secret },
+            data: { webhook: webhookOut(endpoint), secret, project },
             text:
+                inProject(project) +
                 `Webhook endpoint created, ${endpoint.enabled ? 'enabled' : 'disabled'}, for ` +
                 `${plural(endpoint.events.length, 'event')}. Its signing secret is in this ` +
                 'result: write it to the environment of the receiving server, and never commit ' +

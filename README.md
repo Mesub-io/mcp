@@ -1,6 +1,6 @@
 # Mesub MCP server
 
-Mesub is recurring payments on Solana, non-custodial. This is its [Model Context Protocol](https://modelcontextprotocol.io) server: a merchant connects their AI tool to it, and the agent can then read one Mesub project and act on it, the way the merchant would in the dashboard.
+Mesub is recurring payments on Solana, non-custodial. This is its [Model Context Protocol](https://modelcontextprotocol.io) server: a merchant connects their AI tool to it, and the agent can then read the Mesub projects of the merchant's organization, or the one project they pinned it to, and act on them, the way the merchant would in the dashboard.
 
 It is a thin layer over the Mesub HTTP API. A tool is one call to that API and a mapping of its answer: no business logic lives here.
 
@@ -16,7 +16,7 @@ It is a thin layer over the Mesub HTTP API. A tool is one call to that API and a
 
 Hosted by Mesub at `https://mcp.mesub.io/mcp`, against the production API: there is nothing to install and nothing to run on the merchant's side. A dev server runs against the dev API, for the team's tests: `https://mcp-dev.mesub.io/mcp`.
 
-What exists in this repository: the transport, authorization, the client for the Mesub API, and 23 tools. What it is tested against, on every push, is a stand-in for the Mesub API.
+What exists in this repository: the transport, authorization, the client for the Mesub API, and 24 tools. What it is tested against, on every push, is a stand-in for the Mesub API.
 
 ## Connect
 
@@ -49,20 +49,21 @@ A tool configured from a terminal takes the same two things, a name and the addr
 your-tool mcp add --transport http mesub <the address>
 ```
 
-There is no API key to paste and none to create: the sign-in in the browser is the whole of it. An agent works on the project you chose and no other. To work on another project, connect again and choose it.
+There is no API key to paste and none to create: the sign-in in the browser is the whole of it. An agent works on what you chose and nothing else: the projects of your organization, or the one project you pinned it to. A pinned connection reaches no other project: to work on another, connect again and choose it. `list_projects` says which projects a connection reaches, and every tool that changes something names its project.
 
 ## Tools
 
-23 tools. Each describes itself and its arguments to the agent, so there is nothing to learn: ask in plain words. The last column is what the server tells the AI tool about each one, from which the tool decides whether to ask its user first.
+24 tools. Each describes itself and its arguments to the agent, so there is nothing to learn: ask in plain words. The last column is what the server tells the AI tool about each one, from which the tool decides whether to ask its user first.
 
 <!-- tools:start (written by `pnpm readme:tools`, do not edit) -->
 
-**Read** (14). They change nothing.
+**Read** (15). They change nothing.
 
 | Tool                      | What it does                               | What a client is told |
 | ------------------------- | ------------------------------------------ | --------------------- |
 | `ping`                    | Check the Mesub API                        | Read-only             |
 | `search_docs`             | Search the Mesub documentation             | Read-only             |
+| `list_projects`           | List the projects                          | Read-only             |
 | `get_project`             | Read the project                           | Read-only             |
 | `list_plans`              | List the plans                             | Read-only             |
 | `get_plan`                | Read one plan                              | Read-only             |
@@ -131,14 +132,14 @@ Whatever it is asked, by the merchant or by anything it reads:
 - Change where the money of an existing plan goes, choose which wallet of a locked list is paid, or send money to a wallet the merchant did not give.
 - Send an old webhook delivery again. That stays in the dashboard: it would let an agent pull past events, with subscribers' identifiers in them, to an address of its choice.
 - Cancel, pause, change or refund a customer's subscription. Only their own wallet cancels, the merchant cannot either, and Mesub never holds the money: there is no refund through Mesub.
-- Reach another project than the one the connection was made for.
+- Reach a project outside its connection: one of another organization, or another than the one the connection is pinned to. The Mesub API decides, on every call, with the merchant's role in the organization as it is then.
 
 These are not tools switched off: the server has no such tool, and the Mesub API gives an agent no route to them.
 
 ## Security model
 
 - **No API key.** The merchant signs in to the dashboard in their browser and authorizes the agent there. Nothing is pasted into the AI tool, and no tool here returns the API key.
-- **One project per connection.** The token names the project. No tool takes a project id.
+- **One organization per connection.** The token names the organization, and the project when the connection is pinned. A tool takes `project`, an id or a name, and the Mesub API decides whether the connection reaches it: this server never picks one. A change is reported with the project Mesub says it acted on, and as a failure when that is not the one named.
 - **All or nothing.** A connected agent can use every tool listed above. There is no read-only mode: connect an agent only if you would let it do all of it.
 - **A one-hour token, renewed by the AI tool.** The server keeps none: it asks the Mesub API about the token on every request.
 - **A day without use cuts the connection.** While it is used it stays open.
@@ -164,7 +165,7 @@ Past one, the tool error says how many seconds to wait. This server has limits o
 
 - Streamable HTTP at `POST /mcp`, protocol revision 2026-07-28, with the official TypeScript SDK (`@modelcontextprotocol/server`). Clients of the 2025 revisions are served too.
 - No session: a fresh MCP server is built for every HTTP request, and any instance can answer any request. No session id is issued, and `GET` and `DELETE` on `/mcp` answer 405. What an instance keeps in memory never lets anyone in: see [Limits of this server](#limits-of-this-server).
-- No API key, anywhere, and no tool takes a project id. The caller presents an access token issued by Mesub, bound to one project and to this server: see [How a connection works](#how-a-connection-works).
+- No API key, anywhere. The caller presents an access token issued by Mesub, bound to one organization, or one of its projects, and to this server: see [How a connection works](#how-a-connection-works).
 - What a tool returns is data. A plan's name or a customer id is written by a merchant or their users, and is never an instruction: the server says so to every client, in its `instructions`.
 - `search_docs` searches the public docs without calling anything: an index of them is built from one commit of [Mesub-io/docs](https://github.com/Mesub-io/docs) and committed here, in `src/docs/index.json`. See [The docs index](#the-docs-index). It asks for a token like every other tool, though it reads no project: one rule for everything.
 - `GET /health` answers 200 with the server's name and version.
@@ -185,9 +186,9 @@ The server is an OAuth 2.1 protected resource, as the MCP authorization specific
     { "resource": "<MCP_PUBLIC_URL>/mcp", "authorization_servers": ["<MESUB_ISSUER_URL>"] }
     ```
 
-3. The client goes to the Mesub API (`<MESUB_ISSUER_URL>/.well-known/oauth-authorization-server`), where a merchant signs in and connects the agent to one project. It comes back with an access token: opaque, good for one hour, for that project and for this server only.
+3. The client goes to the Mesub API (`<MESUB_ISSUER_URL>/.well-known/oauth-authorization-server`), where a merchant signs in and connects the agent to their organization or to one of its projects. It comes back with an access token: opaque, good for one hour, for that connection and for this server only.
 4. On every request, the server asks the Mesub API who the token stands for: `GET <MESUB_API_URL>/agent/whoami`, with the agent's token and this server's service secret, together. The API takes neither alone. The answer must name this server as the token's audience and `MESUB_ISSUER_URL` as its issuer, or the request is refused.
-5. A tool then runs for that connection: it is handed the connection, the project and the client, never the token.
+5. A tool then runs for that connection: it is handed the connection, its organization and project, and the client, never the token. The `project` an agent names goes to the API as it is, in the query.
 
 No good answer is taken for the next request: a connection revoked in the dashboard is refused on the very next one, on every instance. What the server answers when a token is not let in:
 
@@ -259,7 +260,7 @@ node --env-file=.env dist/main.js
 
 ```sh
 curl http://localhost:3334/health
-# {"status":"ok","name":"mesub-mcp","version":"0.1.2"}
+# {"status":"ok","name":"mesub-mcp","version":"0.2.0"}
 curl -i -X POST http://localhost:3334/mcp
 # 401, with the challenge
 curl http://localhost:3334/.well-known/oauth-protected-resource/mcp

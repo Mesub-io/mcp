@@ -2,6 +2,7 @@ import * as z from 'zod';
 
 import { PLAN_STATUSES, TIERS } from '../mesub/schemas.js';
 import { DATA_NOTICE, known, plural } from '../text.js';
+import { projectInput } from './inputs.js';
 import { capped, MAX_LIST_ITEMS } from './limits.js';
 import { projectOut, projectOutput, state } from './shapes.js';
 import { snake } from './snake.js';
@@ -16,14 +17,13 @@ export const getProject = defineTool({
     name: 'get_project',
     title: 'Read the project',
     description:
-        'Read the Mesub project this connection is for: its name, its tier (Free, Dev or ' +
-        'Business), what it pays Mesub for that tier, and how many plans and subscribers it ' +
-        'has against what the tier allows, plan by plan. Use it to answer which project this ' +
-        'is, which tier it is on, or how close it is to a cap. For what each plan charges use ' +
-        '`list_plans`; for revenue and failed charges use `get_overview`. It takes no ' +
-        'argument: a connection reads one project, and another needs a new connection. ' +
-        'Changes nothing.',
-    inputSchema: z.strictObject({}),
+        'Read one Mesub project and its usage: its name, its tier (Free, Dev or Business), what it pays ' +
+        'Mesub for that tier, and how many plans and subscribers it has against what the ' +
+        'tier allows, plan by plan. Use it to answer which tier a project is on, or how close ' +
+        'it is to a cap. For the projects this connection reaches, their ids and names, use ' +
+        '`list_projects`. For what each plan charges use `list_plans`; for revenue and failed ' +
+        'charges use `get_overview`. Changes nothing.',
+    inputSchema: z.strictObject({ project: projectInput('one') }),
     outputSchema: z.object({
         project: projectOutput,
         usage: z.object({
@@ -62,8 +62,8 @@ export const getProject = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async (_args, { mesub, signal }) => {
-        const { project, usage } = await mesub.project(signal);
+    handler: async (args, { mesub, signal }) => {
+        const { project, usage } = await mesub.project({ project: args.project, signal });
         const byPlan = capped(usage.byPlan, MAX_LIST_ITEMS);
 
         return {

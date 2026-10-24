@@ -20,6 +20,7 @@ import { getSubscription } from './get-subscription.js';
 import { getWebhookSecret } from './get-webhook-secret.js';
 import { listEvents } from './list-events.js';
 import { listPlans } from './list-plans.js';
+import { listProjects } from './list-projects.js';
 import { listSubscriptions } from './list-subscriptions.js';
 import { listUpcomingCharges } from './list-upcoming-charges.js';
 import { listWebhookDeliveries } from './list-webhook-deliveries.js';
@@ -28,7 +29,7 @@ import { listWebhooks } from './list-webhooks.js';
 import { ping } from './ping.js';
 import { preparePlan } from './prepare-plan.js';
 import { regenerateWebhookSecret } from './regenerate-webhook-secret.js';
-import { failure, success, ToolRefusal } from './result.js';
+import { failure, ProjectMismatch, success, ToolRefusal } from './result.js';
 import { retryCharge } from './retry-charge.js';
 import { searchDocs } from './search-docs.js';
 import { sendTestWebhook } from './send-test-webhook.js';
@@ -36,6 +37,22 @@ import { updateProject } from './update-project.js';
 import { updateRetryPolicy } from './update-retry-policy.js';
 import { updateWebhook } from './update-webhook.js';
 import type { ToolDefinition } from './tool.js';
+
+/**
+ * What a tool called with `project` answers when the API names no
+ * organization for the token: an API older than organizations reads no
+ * `project`, and would act on the token's project whatever was named.
+ */
+export const ORG_SCOPE_UNAVAILABLE =
+    'This Mesub API reaches one project per connection. Call get_project to see which, and ' +
+    'call again without project only if it is the one meant.';
+
+/** The API's own words for a write that names no project on an org-wide connection. */
+export const PROJECT_REQUIRED =
+    'Name the project: list_projects returns the projects of this organization.';
+
+/** An id the API answered, as a log line may hold it: whole when it is one, else a label. */
+const plainId = (value: string) => (/^[A-Za-z0-9_-]{1,64}$/.test(value) ? value : 'not an id');
 
 export interface ToolDependencies {
     logger: Logger;
@@ -54,7 +71,8 @@ export type AnyTool = ToolDefinition<any, any>;
 export const TOOLS: readonly AnyTool[] = [
     ping,
     searchDocs,
-    // What reads the project.
+    // What reads the projects.
+    listProjects,
     getProject,
     listPlans,
     getPlan,
@@ -119,6 +137,24 @@ function register<Input extends z.ZodObject, Output extends z.ZodObject>(
                 });
             }
 
+            // Nothing is sent to an API that would not read it. The arguments
+            // were validated: `project` is there only for a tool that takes it.
+            const named = (args as { project?: unknown }).project;
+            if (named !== undefined && caller.organizationId === null) {
+                throw new ToolRefusal('org_scope_unavailable', ORG_SCOPE_UNAVAILABLE);
+            }
+            // Defence in depth: on a connection to a whole organization, a change
+            // names its project. The API refuses it too; this sends nothing.
+            const writes = !annotations.readOnlyHint && 'project' in inputSchema.shape;
+            if (
+                writes &&
+                named === undefined &&
+                caller.organizationId !== null &&
+                caller.pinned === false
+            ) {
+                throw new ToolRefusal('project_required', PROJECT_REQUIRED);
+            }
+
             // The SDK has validated the arguments against the input schema.
             // The token stops here: a tool gets who it stands for, and a client
             // that carries it, never the token itself.
@@ -146,6 +182,19 @@ function register<Input extends z.ZodObject, Output extends z.ZodObject>(
             // expired in between. Said to the seam, which answers as it does a dead token.
             if (error instanceof MesubApiError && error.code === 'invalid_agent_token') {
                 markTokenRefused(authInfo);
+            }
+            // A write that went through in another project than the one named: Mesub's
+            // fault, never the caller's, and nothing this server can undo.
+            if (error instanceof ProjectMismatch) {
+                logger.error('tool call acted on another project', {
+                    tool: name,
+                    connectionId: caller?.connectionId ?? null,
+                    organizationId: caller?.organizationId ?? null,
+                    // What was named and where Mesub says it acted: to trace the stray write.
+                    named: error.named === null ? null : loggableName(error.named),
+                    actedOnProjectId:
+                        error.actedOnProjectId === null ? null : plainId(error.actedOnProjectId),
+                });
             }
             return failure(error, name, logger);
         } finally {

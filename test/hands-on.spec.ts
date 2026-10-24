@@ -249,9 +249,14 @@ describe('what a hands-on run found', () => {
             expect(api.projectCalls()).toHaveLength(0);
         });
 
-        it('says another project needs a new connection', () => {
-            expect(INSTRUCTIONS).toMatch(/connect again and pick that project on the consent page/);
-            expect(description('get_project')).toMatch(/another needs a new connection/);
+        it('says where to find the project, and to name it in every change', () => {
+            expect(INSTRUCTIONS).toMatch(
+                /Call `list_projects` when you do not know\s+which project/,
+            );
+            expect(INSTRUCTIONS).not.toMatch(/`list_projects` first/);
+            expect(INSTRUCTIONS).toMatch(/Name the project in every tool that changes something/);
+            expect(INSTRUCTIONS).toMatch(/relay it, never retry it/);
+            expect(description('get_project')).toContain('`list_projects`');
         });
     });
 });

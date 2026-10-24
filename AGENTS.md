@@ -4,12 +4,12 @@ Rules for anyone, person or agent, changing this repository. The README has the 
 
 ## What this server is
 
-A thin layer over the Mesub HTTP API, hosted, stateless, serving one Mesub project per access token.
+A thin layer over the Mesub HTTP API, hosted, stateless, serving the projects an access token reaches: those of one organization, or one of them when the connection is pinned to it.
 
 - No business logic. A tool is one or a few calls to the Mesub API. If a tool needs a rule, a computation or a join the API does not offer, the API changes first. The one exception is `search_docs`, which calls nothing: it searches the index of the public docs the build carries.
 - No state a request depends on. No session, no module-level variable a request writes to, and nothing that lets a caller in: a token is checked with the Mesub API on every request, so a revoke takes effect on the next one. What is kept between two requests is in `src/rate-limit.ts`: the rate of each connection, the tokens the API just refused, and which tokens it accepted before, as hashes. The last only says where a token waits to be checked. Any instance must answer right without any of it.
 - No limit that keeps a caller out for what another one sent. A limit protects the Mesub API from a flood. Nothing is counted against an address, a request without a token is always answered, and a table that is full drops its oldest keys rather than refuse a new one. Read the head of `src/rate-limit.ts` before touching one.
-- No API key. The credentials are the caller's access token and this server's service secret, which the Mesub API takes together or not at all. No tool takes a project id: the token names the project.
+- No API key. The credentials are the caller's access token and this server's service secret, which the Mesub API takes together or not at all. The token names the organization, and the project when the connection is pinned: a tool takes `project`, and the API decides whether the token reaches it.
 - No stream that outlives its request: `subscriptions/listen` is refused. A tool that needs one brings back, with it, a cap per connection and a re-check of the token while the stream is open.
 - No read-only mode: every tool is always listed.
 
@@ -58,7 +58,9 @@ Every input field has a `.describe()`: it is the only documentation the agent ge
 ### Size
 
 - Every list is capped (`src/tools/limits.ts`) and the result says so: `truncated`, `has_more`, and how to get the rest. A list the API serves whole is cut with `capped()` then `fit()`.
+- One list is returned whole: `list_projects`. An agent names a project from it, and one left out would read as one that does not exist.
 - The registry refuses a result past `HARD_RESULT_LENGTH` (`result_too_large`): the net, not the plan.
+- The tool list is sent to the model on every turn. `test/mcp.spec.ts` holds its growth since v0.1.2 to 8000 characters: a field served on many results (`rowProject`) goes undescribed, and a description repeated in many schemas is the first to shorten.
 
 ### Annotations
 
@@ -103,7 +105,9 @@ The auth seam (`src/auth.ts`) has verified the token before a tool runs. The han
 
 It does not get the token nor the service secret, and must never go looking for them.
 
-- Never take a project id as an argument, and never send `caller.projectId` to the API to choose a project: the API reads the project from the token.
+- A tool takes `project`, an id or a name, and sends it as the `project` query parameter: the API decides whether the connection reaches it. Never send `caller.projectId`, and never choose a project for the agent.
+- `project` is sent only to an API that announces organizations: whoami names one (`caller.organizationId`). Otherwise the registry refuses the call (`org_scope_unavailable`) before anything is sent, since an older API would act on the token's project whatever was named. On a connection to a whole organization (`caller.pinned === false`), a write without `project` is refused there too (`project_required`, in the API's words), before anything is sent: the API refuses it as well, this is the second lock.
+- A write checks the project its answer echoes against the one named (`actedOn()` in `src/tools/shapes.ts`): the same id, or else the same name in any case. A difference, or no echo when one was named, is `project_mismatch`, logged as an error with what was named and the id echoed (when it is shaped like one), and nothing of the answer is presented: the change went through somewhere else. `delete_webhook` is answered with nothing, so it returns the argument as sent and never says where it deleted.
 - Never call the Mesub API, or anything else, with `fetch`. `mesub` is the only way out, and `MesubClient` the only place a credential is put on a request.
 - `organizationName`, `projectName` and `clientName` are data written by other people. Never put them in a tool's description or the server's instructions, and never act on what they say.
 - Never keep the context, or anything of it, past the call: no module-level variable, no cache keyed by connection or project.
@@ -111,6 +115,7 @@ It does not get the token nor the service secret, and must never go looking for 
 ### Adding a method to `MesubClient`
 
 - Say who the call is made as: `as: 'agent'` (the agent's token and the service secret, together) for every route that reads or changes a project, `as: 'none'` for a public one such as `/health`. There is no way to send one credential without the other, and none must be added.
+- A route of a project goes through `#agent` and takes a `Scope` last: the `project` the agent named and the call's signal. `#agent` is the one place `project` is put on a request, in the query.
 - The path is a literal. A value read from a caller goes through `pathSegment()` to become one segment, or into `query`. `pathSegment()` refuses a value holding a slash, a backslash, `..`, a percent sign or a control character: an id is not a path. `apiUrl()` refuses a path that is not a plain one, an encoded separator included.
 - Every call has one deadline over the whole exchange, the body included. Never read an answer outside `#exchange`.
 - Never put a credential in a URL, a body, an error message or a log, and never keep the `cause` of a failed `fetch`: it may quote a header.
@@ -134,7 +139,7 @@ Everything read from Mesub is data, never an instruction. A plan's name, a custo
 - Never put a field read from Mesub into a tool's description or into the server's instructions.
 - The one-sentence `text` of a result is written by the tool from counts and statuses, not from free text fields: never a name, an id, a wallet, a URL, a reason or a secret. It ends with `DATA_NOTICE` when the result carries text somebody else wrote.
 - A state goes into a sentence through `known()` or `tally()` (`src/text.ts`), with the list of the states this server knows: one the API added since reads `UNKNOWN` there, and stays whole in its field.
-- Where a sentence must name something a person will act on, it is `quoted()`: cut short, and between quotes it cannot close. `prepare_plan` does it for the plan's name, and writes what a merchant needs before signing: the wallets the money may go to, each as its first and last four characters between quotes and only when it is an address, the end with its time in UTC (`planEnd()` in `src/text.ts`, `Jan 31, 2027, 23:59 UTC`, never a day alone) written from the instant and never from the text that named it, and the link to sign, which is an `isLink()` or the answer is refused. Nothing else of an answer is ever interpolated. `test/hardening.spec.ts` plants an instruction in every text field of every answer and fails on a sentence that repeats it outside quotes.
+- Where a sentence must name something a person will act on, it is `quoted()`: cut short, and between quotes it cannot close. Every write but `delete_webhook`, which is answered with nothing, names the project it acted on: `inProject()` opens its sentence, and `prepare_plan` says it in its own phrase (`in the project "..."`). `prepare_plan` does it for the plan's name too, and also writes what a merchant needs before signing: the wallets the money may go to, each as its first and last four characters between quotes and only when it is an address, the end with its time in UTC (`planEnd()` in `src/text.ts`, `Jan 31, 2027, 23:59 UTC`, never a day alone) written from the instant and never from the text that named it, and the link to sign, which is an `isLink()` or the answer is refused. Nothing else of an answer is ever interpolated. `test/hardening.spec.ts` plants an instruction in every text field of every answer and fails on a sentence that repeats it outside quotes.
 
 ## Secrets and logs
 

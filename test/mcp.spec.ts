@@ -73,7 +73,7 @@ describe.each([
         const { tools } = await client.listTools();
 
         expect(tools.map((tool) => tool.name)).toEqual(TOOLS.map((tool) => tool.name));
-        expect(tools).toHaveLength(23);
+        expect(tools).toHaveLength(24);
         expect(tools[0]).toMatchObject({
             name: 'ping',
             title: 'Check the Mesub API',
@@ -90,6 +90,15 @@ describe.each([
             },
         });
         expect(tools[0]?.description?.length).toBeGreaterThan(40);
+    });
+
+    it('the tool list grows by at most 8000 characters', async () => {
+        const { tools } = await client.listTools();
+
+        // JSON.stringify of the `tools` of tools/list as v0.1.2 served it: every client
+        // sends the whole list to its model on every turn, so it grows on purpose only.
+        const V0_1_2 = 145_946;
+        expect(JSON.stringify(tools).length).toBeLessThanOrEqual(V0_1_2 + 8000);
     });
 
     it('calls ping through to the public /health of the Mesub API, with no credential', async () => {

@@ -2,10 +2,10 @@ import * as z from 'zod';
 
 import { type AgentUpcomingLine, EVENT_GROUPS, UPCOMING_KINDS } from '../mesub/schemas.js';
 import { DATA_NOTICE, plural, tally } from '../text.js';
-import { MAX_DAYS, planFilter, searchInput } from './inputs.js';
+import { MAX_DAYS, planFilter, projectInput, searchInput } from './inputs.js';
 import { capped, fit, MAX_LIST_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
-import { blockedReason, externalId, state, symbol, token } from './shapes.js';
+import { blockedReason, externalId, rowProject, state, symbol, token } from './shapes.js';
 import { snake } from './snake.js';
 import { defineTool } from './tool.js';
 
@@ -57,6 +57,7 @@ export const listUpcomingCharges = defineTool({
         'For what already happened use `list_events`. It schedules and ' +
         'charges nothing. Every amount comes with a display value: quote that one.',
     inputSchema: z.strictObject({
+        project: projectInput('any'),
         plan_id: planFilter,
         days: z
             .number()
@@ -81,6 +82,7 @@ export const listUpcomingCharges = defineTool({
     outputSchema: z.object({
         upcoming: z.array(
             z.object({
+                ...rowProject,
                 subscription_id: z.string(),
                 subscriber: z.string(),
                 external_id: externalId,
@@ -144,8 +146,11 @@ export const listUpcomingCharges = defineTool({
         idempotentHint: true,
         openWorldHint: false,
     },
-    handler: async ({ plan_id, days, group: only, q }, { mesub, signal }) => {
-        const lines = await mesub.upcoming({ plan: plan_id, days, group: only, q }, signal);
+    handler: async ({ project, plan_id, days, group: only, q }, { mesub, signal }) => {
+        const lines = await mesub.upcoming(
+            { plan: plan_id, days, group: only, q },
+            { project, signal },
+        );
         const { kept, truncated } = capped(lines, MAX_LIST_ITEMS);
         const upcoming = kept.map((line) => ({
             ...snake(line),
