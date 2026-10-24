@@ -65,6 +65,10 @@ describe('the refusals of an organization', () => {
             });
         }
         expect(ROLE_ADVICE).not.toMatch(/connect again/i);
+        // Only the Owner changes a role (member.promote is Owner-only).
+        expect(ROLE_ADVICE).toContain('the Owner can make them an Admin');
+        expect(ROLE_ADVICE).not.toMatch(/admins? can (give|grant|change|make)/i);
+        expect(ROLE_ADVICE).not.toMatch(/give them that role/i);
     });
 
     it('relays the team wallet link on team_wallet_required', async () => {
