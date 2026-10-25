@@ -17,7 +17,7 @@ export const updateWebhook = defineTool({
         'calling it, stating the old and the new value, and only ever set a URL the ' +
         'merchant gave and owns. Its host must resolve publicly: a made-up or local ' +
         'address is refused by Mesub. Removing an event or disabling the endpoint stops a live ' +
-        'integration from hearing of it, and disabling mails the account owner. Send only ' +
+        'integration from hearing of it, and disabling mails the Owner and the Admins. Send only ' +
         'what changes; the signing secret is kept. An endpoint Mesub turned off after ' +
         'failures comes back only with `enabled: true`. To remove an endpoint use ' +
         '`delete_webhook`; to add another, `create_webhook`. Returns the endpoint.',
