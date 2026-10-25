@@ -171,7 +171,9 @@ describe('what a hands-on run found', () => {
             const { plans } = listed.structuredContent as Data;
 
             expect(plans.map((plan: Data) => plan.sign_url)).toEqual([SIGN_URL, null, null]);
-            expect(sentence(listed)).toMatch(/A PENDING plan carries `sign_url`/);
+            expect(sentence(listed)).toMatch(/A plan waiting in To sign carries `sign_url`/);
+            // The merchant's words for the state, never the code.
+            expect(sentence(listed)).toMatch(/^3 plans: 2 ACTIVE, 1 waiting in To sign\./);
 
             api.answer(200, {
                 ...answers.planDetail,
@@ -181,6 +183,7 @@ describe('what a hands-on run found', () => {
 
             expect((one.structuredContent as Data).plan.sign_url).toBe(SIGN_URL);
             expect(sentence(one)).toContain(`signs it at ${SIGN_URL} .`);
+            expect(sentence(one)).toMatch(/^The plan is waiting in To sign, with/);
 
             api.answer(200, answers.planDetail);
             const signed = await call('get_plan', { plan_id: PLAN_ID });

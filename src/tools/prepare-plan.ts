@@ -103,7 +103,7 @@ function differences(
         symbol: string;
         periodHours: number;
         destinations: readonly string[];
-        /** The wallet charges must pay: the first of the list. Null: no list, the team wallet. */
+        /** The wallet charges must pay: the first of the list. Null: no list, the organization wallet. */
         paid: string | null;
         /** Null: no end was asked for. */
         end: number | null;
@@ -129,7 +129,7 @@ function differences(
     ) {
         differs.push('wallets the money may go to');
     }
-    // With no list the receiver is the organization's team wallet, which nobody here knows.
+    // With no list the receiver is the organization wallet, which nobody here knows.
     if (asked.paid !== null && plan.receiver !== asked.paid) differs.push('wallet the charges pay');
     if (plan.status !== 'PENDING') differs.push('state');
     return differs;
@@ -150,7 +150,7 @@ export const preparePlan = defineTool({
         'end on a date, or run with no end?" Ask for anything missing and never guess. It ' +
         'creates nothing on chain and charges nobody: nobody can subscribe to the plan until ' +
         'the merchant opens the link this returns and reviews it, and whoever holds the ' +
-        "organization's team wallet signs it, from that link or from To sign in the " +
+        'organization wallet signs it, from that link or from To sign in the ' +
         'dashboard. So never say it was created or ' +
         'published. From that link the merchant can still change the name, the price, the ' +
         'period, the wallets and the end date, and add a logo, before signing: this tool ' +
@@ -272,7 +272,7 @@ export const preparePlan = defineTool({
                         '`paid_wallet`. Signing the plan opens the token account of each ' +
                         "listed wallet for the plan's token, paid in the same transaction by " +
                         'the wallet that signs, so a wallet needs nothing prepared in advance. ' +
-                        "Left out: the plan pays the organization's team wallet, and the " +
+                        'Left out: the plan pays the organization wallet, and the ' +
                         'merchant can change the receiving wallet later in the dashboard to any ' +
                         'wallet, which is more flexible and less locked. ' +
                         'Only addresses the merchant typed in this conversation, copied whole: ' +
@@ -343,7 +343,7 @@ export const preparePlan = defineTool({
         ),
     outputSchema: z.object({
         plan: planOutput.describe(
-            'The plan as Mesub holds it: PENDING, not on chain. Quote `amount_display`, ' +
+            'The plan as Mesub holds it: PENDING (waiting in To sign), not on chain. Quote `amount_display`, ' +
                 '`period_display` and `ends_display`, the end with its time in UTC. ' +
                 '`destinations` and `ends_at` are what the merchant will sign.',
         ),
@@ -357,8 +357,8 @@ export const preparePlan = defineTool({
             .string()
             .optional()
             .describe(
-                "The plan in To sign, in the dashboard, where whoever holds the organization's " +
-                    'team wallet signs it. Absent when this Mesub does not say. Give it as it is.',
+                'The plan in To sign, in the dashboard, where whoever holds the organization ' +
+                    'wallet signs it. Absent when this Mesub does not say. Give it as it is.',
             ),
         next_step: z.string().describe('What Mesub says comes next, to relay.'),
         project: actedOnOutput,
@@ -469,7 +469,7 @@ export const preparePlan = defineTool({
         // With a list, the receiver was checked above to be the wallet the merchant chose.
         const where =
             plan.destinations.length === 0
-                ? `It pays the organization's team wallet${receiver === null ? '' : ` ${receiver}`}, ` +
+                ? `It pays the organization wallet${receiver === null ? '' : ` ${receiver}`}, ` +
                   'which can be changed later in the dashboard: no list of wallets is locked.'
                 : 'The money can only ever go to ' +
                   (wallets.length === 1
@@ -505,7 +505,7 @@ export const preparePlan = defineTool({
                 `at ${shown.amount_display} ${shown.period_display}. ${where} ${until} Nothing ` +
                 'is on chain: nobody can subscribe or be charged until whoever holds the ' +
                 // An address stands alone, so that nothing after it is read as part of it.
-                `organization's team wallet signs it, from ${plan.signUrl} , where the merchant ` +
+                `organization wallet signs it, from ${plan.signUrl} , where the merchant ` +
                 'reviews it and can still edit it, or from To sign in the dashboard' +
                 `${toSign === null ? '' : ` at ${toSign} `}. Give the merchant ` +
                 `${toSign === null ? 'that link' : 'both links'} and repeat the name, the price, ` +

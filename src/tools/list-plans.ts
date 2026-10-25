@@ -1,7 +1,7 @@
 import * as z from 'zod';
 
 import { PLAN_STATUSES } from '../mesub/schemas.js';
-import { DATA_NOTICE, plural, tally } from '../text.js';
+import { DATA_NOTICE, planState, plural, tally } from '../text.js';
 import { projectInput } from './inputs.js';
 import { capped, fit, MAX_LIST_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
@@ -17,7 +17,8 @@ export const listPlans = defineTool({
         'and what it collected over its last period. Use it to find a plan, its id or its slug, or to ' +
         'compare plans. For one plan with its failed charges and latest attempts use ' +
         '`get_plan` with its id. It does not create or edit a plan: `prepare_plan` prepares ' +
-        'one for the merchant to sign, and a plan it prepared shows here as PENDING, with ' +
+        'one for the merchant to sign, and a plan it prepared shows here as PENDING (say ' +
+        '"waiting in To sign"), with ' +
         '`sign_url`, until they do. Every amount comes with ' +
         'a display value such as "9.99 USDC": quote that one, never convert the raw amount ' +
         'yourself. Changes nothing.',
@@ -82,12 +83,12 @@ export const listPlans = defineTool({
                 all.length === 0
                     ? 'The project has no plan yet.'
                     : `${plural(all.length, 'plan')}: ${tally(
-                          all.map((plan) => plan.status),
-                          PLAN_STATUSES,
+                          all.map((plan) => planState(plan.status, PLAN_STATUSES)),
+                          PLAN_STATUSES.map((status) => planState(status, PLAN_STATUSES)),
                       )}.` +
                       (data.truncated ? ` Only the newest ${plans.length} are returned.` : '') +
                       (all.some((plan) => plan.signUrl !== null)
-                          ? ' A PENDING plan carries `sign_url`, where the merchant signs it.'
+                          ? ' A plan waiting in To sign carries `sign_url`, where the merchant signs it.'
                           : '') +
                       ` ${DATA_NOTICE}`,
         };

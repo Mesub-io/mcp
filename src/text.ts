@@ -26,6 +26,12 @@ export function known(value: string, list: readonly string[]): string {
     return list.includes(value) ? value : UNKNOWN_STATE;
 }
 
+/** A plan's state as `known` says it, a prepared plan being "waiting in To sign", never PENDING. */
+export function planState(value: string, list: readonly string[]): string {
+    const state = known(value, list);
+    return state === 'PENDING' ? 'waiting in To sign' : state;
+}
+
 /** "2 ACTIVE, 1 SUNSET", commonest first. A state out of `list` counts as UNKNOWN. */
 export function tally(values: readonly string[], list: readonly string[]): string {
     const counts = new Map<string, number>();

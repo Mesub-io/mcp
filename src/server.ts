@@ -31,7 +31,7 @@ export const INSTRUCTIONS = [
     'server that receives the webhooks, and nowhere else.',
     '`prepare_plan` prepares a plan and publishes nothing: nothing is on chain and nobody can',
     'subscribe until the merchant opens the link it returns and reviews the plan, and whoever',
-    "holds the organization's team wallet signs it, from that link or from To sign in the",
+    'holds the organization wallet signs it, from that link or from To sign in the',
     'dashboard. Give the merchant the link, repeat the price and the period as the result states',
     'them, and never say the plan was created. Before preparing one, ask the merchant whether to',
     'lock the wallets the money may go to, which ones, and when there are several, which of them',

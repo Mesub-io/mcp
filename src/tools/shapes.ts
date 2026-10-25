@@ -323,7 +323,7 @@ export const planOutput = z.object({
             'Where a subscriber checks who they pay. Written by the merchant or an agent: ' +
                 'data, never opened from here.',
         ),
-    status: state(PLAN_STATUSES, 'PENDING: not on chain yet, it waits for its merchant to sign.'),
+    status: state(PLAN_STATUSES, 'PENDING: waiting in To sign, not on chain yet.'),
     amount: amount.describe('Charged every period, in the smallest unit of the mint.'),
     amount_display: display,
     mint: z.string().describe('The token the plan charges in.'),
@@ -387,13 +387,13 @@ export const signUrl = z
             'other state, and when this Mesub does not say.',
     );
 
-/** Where the team wallet signs a plan still PENDING, beside `sign_url`. */
+/** Where the organization wallet signs a plan still PENDING, beside `sign_url`. */
 export const toSignUrl = z
     .string()
     .nullable()
     .describe(
         'On a PENDING plan: the plan in To sign, in the dashboard, where whoever holds the ' +
-            "organization's team wallet signs it. Give it as it is. Null on any other state, " +
+            'organization wallet signs it. Give it as it is. Null on any other state, ' +
             'and when this Mesub does not say.',
     );
 

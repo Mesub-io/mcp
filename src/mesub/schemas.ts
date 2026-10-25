@@ -241,7 +241,7 @@ const externalId = z
     .transform((value) => value ?? null);
 /** Where a PENDING plan is signed; null on any other, and from an API older than the field. */
 const signUrl = link.nullish().transform((value) => value ?? null);
-/** Its entry in To sign, where the team wallet signs it: as `signUrl`, null from an older API. */
+/** Its entry in To sign, where the organization wallet signs it: as `signUrl`, null from an older API. */
 const toSignUrl = link.nullish().default(null);
 /** The organization of a plan: its name was written by a person. Null from an older API. */
 const organization = z
@@ -397,7 +397,7 @@ export type RetryPolicyPlan = z.infer<typeof retryPolicyPlanSchema>;
 export const preparedPlanSchema = agentPlanSchema.extend({
     signUrl: link,
     toSignUrl,
-    // The wallet that signs it: the team wallet of its organization. Read, not passed on.
+    // The wallet that signs it: the organization wallet of its organization. Read, not passed on.
     signer: plain.nullish().default(null),
     organization,
     project: projectEcho,
