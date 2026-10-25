@@ -249,7 +249,9 @@ describe('DocsSearch, on the Mesub docs', () => {
         ['late payment retry', '/docs/lifecycle'],
         ['FakeMesub tier', '/docs/testing'],
         ['install @mesub/node', '/docs/quickstart'],
-        ['install @mesub/react', '/docs/quickstart'],
+        // The widget's own page, since the quickstart grew a devnet step 0
+        // (docs v0.1.3): it leads to the install line.
+        ['install @mesub/react', '/docs/react'],
         // Typos.
         ['hasAcess', '/docs/access'],
         ['renewal_upcomming', '/reference/webhooks/subscription-renewal-upcoming'],
