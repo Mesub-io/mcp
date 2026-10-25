@@ -1,7 +1,7 @@
 import * as z from 'zod';
 
 import { PLAN_STATUSES, PULL_OUTCOMES, SUBSCRIPTION_STATUSES } from '../mesub/schemas.js';
-import { DATA_NOTICE, known, plural } from '../text.js';
+import { DATA_NOTICE, planState, plural } from '../text.js';
 import { idInput, projectInput } from './inputs.js';
 import { capped, MAX_NESTED_ITEMS } from './limits.js';
 import { displayAmount } from './money.js';
@@ -143,7 +143,7 @@ export const getPlan = defineTool({
                 })),
             },
             text:
-                `The plan is ${known(plan.status, PLAN_STATUSES)}, with ${plural(subscribers, 'subscription')} and ` +
+                `The plan is ${planState(plan.status, PLAN_STATUSES)}, with ${plural(subscribers, 'subscription')} and ` +
                 `${plural(detail.outcomes.PAID ?? 0, 'paid charge')} out of ` +
                 `${Object.values(detail.outcomes).reduce((sum, n) => sum + n, 0)}. ` +
                 // The address stands alone, so that nothing after it is read as part of it.

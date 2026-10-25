@@ -558,7 +558,7 @@
       "calls": ["list_plans"],
       "never": ["prepare_plan"],
       "ask_first": false,
-      "says": "Says no: the plan is PENDING until the merchant signs it in the dashboard. Does not prepare it a second time."
+      "says": "Says no: the plan is waiting in To sign until the merchant signs it in the dashboard. Does not prepare it a second time."
     }
   },
   {

@@ -55,7 +55,7 @@ interface Refused {
     status: number | null;
     retryable: boolean;
     retryAfterSeconds: number | null;
-    /** Where a merchant connects a wallet, or the Owner sets the team wallet: checked by the client. */
+    /** Where a merchant connects a wallet, or the Owner sets the organization wallet: checked by the client. */
     walletUrl?: string | null;
     /** The id Mesub gave the request (`Mesub-Request-Id`), checked to be one. */
     requestId?: string | null;
@@ -74,7 +74,7 @@ function prepareAdvice({ code, status, walletUrl }: Refused): string | undefined
             ? `at ${walletUrl} ,`
             : 'in the Organization settings of the Mesub dashboard,';
         return (
-            'Nothing was prepared. This organization has no team wallet yet, and only its ' +
+            'Nothing was prepared. No organization wallet is set yet, and only the ' +
             `Owner sets one, ${where} then call again.`
         );
     }
@@ -171,7 +171,7 @@ const PROJECT_ADVICE: Record<string, string> = {
 
 /** What to check before preparing again a plan whose first try may have gone through. */
 const PREPARED_ALREADY =
-    ' Read `list_plans` before preparing it again: a plan of that name that is PENDING means ' +
+    ' Read `list_plans` before preparing it again: a plan of that name waiting in To sign (PENDING) means ' +
     'this call went through.';
 
 /**

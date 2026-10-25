@@ -175,7 +175,7 @@ export const agentProjects = {
     ],
 };
 
-/** The plan's entry in To sign, where the holder of the team wallet signs it. */
+/** The plan's entry in To sign, where the holder of the organization wallet signs it. */
 export const TO_SIGN_URL = `${SITE}/to-sign/cpa00000000000000000001`;
 /** What `POST /agent/plans` answers since it names who signs, and where (teams v1). */
 export const teamPreparedPlan = {
@@ -185,7 +185,7 @@ export const teamPreparedPlan = {
     organization: { id: ORG_ID, name: `Fraise & Co ${POISON}` },
     project: PROJECT_ECHO,
     nextStep:
-        "Nothing is on chain yet. Whoever holds the organization's team wallet opens this " +
+        'Nothing is on chain yet: the plan is waiting in To sign. Whoever holds the organization wallet opens this ' +
         'link, reviews the plan and signs it.',
 };
 

@@ -54,7 +54,7 @@ const NOT_ALLOWED =
 
 const OTHER_WALLET = '3h1zGmCwsRJnVk5BuRNMLsPaQu1y2aqXqXDWYCgrp5UG';
 const TEAM_PAYS =
-    'It pays the organization\'s team wallet "9WzD...AWWM", which can be changed later in ' +
+    'It pays the organization wallet "9WzD...AWWM", which can be changed later in ' +
     'the dashboard: no list of wallets is locked.';
 const NO_END = 'It has no end date: it runs until the merchant closes it.';
 /**
@@ -66,7 +66,7 @@ const sentenceOf = (wallets: string, end: string, toSign?: string, project?: str
     `${project === undefined ? '' : `in the project ${JSON.stringify(project)}, `}` +
     `at 9.99 USDC every month (30 days). ${wallets} ${end} ` +
     'Nothing is on chain: nobody can subscribe or be charged until whoever holds the ' +
-    `organization's team wallet signs it, from ${SITE}/dashboard#plans/publish/${PREPARED_ID} , ` +
+    `organization wallet signs it, from ${SITE}/dashboard#plans/publish/${PREPARED_ID} , ` +
     'where the merchant reviews it and can still edit it, or from To sign in the dashboard' +
     `${toSign === undefined ? '' : ` at ${toSign} `}. Give the merchant ` +
     `${toSign === undefined ? 'that link' : 'both links'} and repeat the name, the price, the ` +
@@ -567,7 +567,7 @@ describe('prepare_plan', () => {
 
             const line = sentence(await call(PRO));
 
-            expect(line).toContain("It pays the organization's team wallet, which can be changed");
+            expect(line).toContain('It pays the organization wallet, which can be changed');
             expect(line).not.toMatch(/IGNORE|poison/i);
         });
 
@@ -641,7 +641,7 @@ describe('prepare_plan', () => {
 
             for (const said of [description, INSTRUCTIONS]) {
                 expect(said).toContain(
-                    "whoever holds the organization's team wallet signs it, from that link or " +
+                    'whoever holds the organization wallet signs it, from that link or ' +
                         'from To sign in the dashboard',
                 );
             }
@@ -905,9 +905,7 @@ describe('prepare_plan', () => {
             const result = await call(PRO);
 
             expect(result.isError).toBeFalsy();
-            expect(sentence(result)).toContain(
-                'It pays the organization\'s team wallet "3h1z...p5UG"',
-            );
+            expect(sentence(result)).toContain('It pays the organization wallet "3h1z...p5UG"');
         });
 
         it.each([

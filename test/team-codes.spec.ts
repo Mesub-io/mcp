@@ -18,7 +18,7 @@ const errorOf = (result: Result) =>
 const PRO = { name: 'Pro', token: 'USDC', price: '9.99', period_hours: 720 };
 const ROLE = 'Only the Owner and Admins can manage webhooks.';
 const NO_TEAM_WALLET =
-    'Fraise has no team wallet yet. The Owner sets one in Organization settings.';
+    'Fraise has no organization wallet yet. The Owner sets one in Organization settings.';
 const TEAM_WALLET_URL = `${SITE}/dashboard#org-settings/wallet`;
 
 describe('the refusals of an organization', () => {
@@ -81,8 +81,8 @@ describe('the refusals of an organization', () => {
 
         expect(result.isError).toBe(true);
         expect(text(result)).toBe(
-            `Mesub error team_wallet_required: ${NO_TEAM_WALLET} Nothing was prepared. This ` +
-                'organization has no team wallet yet, and only its Owner sets one, at ' +
+            `Mesub error team_wallet_required: ${NO_TEAM_WALLET} Nothing was prepared. ` +
+                'No organization wallet is set yet, and only the Owner sets one, at ' +
                 `${TEAM_WALLET_URL} , then call again.`,
         );
         // The address alone between " at " and " ,": nothing after it reads as part of it.
@@ -101,8 +101,8 @@ describe('the refusals of an organization', () => {
         const result = await call('prepare_plan', PRO);
 
         expect(text(result)).toBe(
-            `Mesub error team_wallet_required: ${NO_TEAM_WALLET} Nothing was prepared. This ` +
-                'organization has no team wallet yet, and only its Owner sets one, in the ' +
+            `Mesub error team_wallet_required: ${NO_TEAM_WALLET} Nothing was prepared. ` +
+                'No organization wallet is set yet, and only the Owner sets one, in the ' +
                 'Organization settings of the Mesub dashboard, then call again.',
         );
         expect(errorOf(result)?.walletUrl ?? null).toBeNull();
