@@ -95,6 +95,7 @@ export function createApp(dependencies: AppDependencies): App {
     const auth = createAuthenticator(dependencies);
     const mcp: McpHttpHandler = createMesubMcpHandler({
         logger,
+        apiUrl: config.mesubApiUrl,
         mesubFor: auth.mesubFor,
         ...(dependencies.tools && { tools: dependencies.tools }),
     });
