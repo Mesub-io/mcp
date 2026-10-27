@@ -54,8 +54,29 @@ export const INSTRUCTIONS = [
     'Call `ping` to tell an outage of the Mesub API from a mistake in a request.',
 ].join(' ');
 
+/** The API a merchant's server reaches when nothing says otherwise: `@mesub/node`'s default. */
+export const DEFAULT_API_URL = 'https://api.mesub.io';
+
+/**
+ * The instructions for a server that calls `apiUrl` (#80). Another Mesub than
+ * the default hands out its own API keys, which the default refuses: the
+ * merchant's server sets that address beside the key, and the agent learns it
+ * here. The default says nothing more.
+ */
+export function instructionsFor(apiUrl: string): string {
+    if (apiUrl === DEFAULT_API_URL) return INSTRUCTIONS;
+
+    return (
+        `${INSTRUCTIONS} This Mesub runs at ${apiUrl}, and its API keys work there only: the ` +
+        `merchant's server sets MESUB_BASE_URL=${apiUrl} beside MESUB_API_KEY, both from this ` +
+        "Mesub's dashboard. Never point MESUB_BASE_URL anywhere else: the key is sent there."
+    );
+}
+
 export interface McpHandlerDependencies {
     logger: Logger;
+    /** The Mesub API this server calls (`MESUB_API_URL`), for the instructions. */
+    apiUrl: string;
     /** The Mesub API as the holder of a token the auth seam let through. */
     mesubFor: (token: string) => MesubClient;
     /** Tests only: the tools to register instead of the server's own. */
@@ -74,13 +95,14 @@ export interface McpHandlerDependencies {
  */
 export function createMesubMcpHandler(dependencies: McpHandlerDependencies): McpHttpHandler {
     const { logger, mesubFor, tools } = dependencies;
+    const instructions = instructionsFor(dependencies.apiUrl);
 
     return createMcpHandler(
         () => {
             const server = new McpServer(
                 { name: SERVER_NAME, title: 'Mesub', version: VERSION },
                 {
-                    instructions: INSTRUCTIONS,
+                    instructions,
                     // The list of tools never changes while the server runs,
                     // and no stream would be there to say it did.
                     capabilities: { tools: { listChanged: false } },
