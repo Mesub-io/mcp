@@ -209,10 +209,9 @@ export const preparePlan = defineTool({
                 .min(1)
                 .max(MAX_PERIOD_HOURS)
                 .describe(
-                    `How often subscribers are charged, in whole hours, 1 to ${MAX_PERIOD_HOURS}: ` +
-                        '24 a day, 168 a week, 720 a month (30 days, not a calendar month), ' +
-                        '8760 a year (365 days). On the Free and Dev tiers, 24 or more: a ' +
-                        'shorter period is refused (`period_too_short`). Business takes any.',
+                    'How often subscribers are charged, in whole hours, 1 (24 on Free and Dev) ' +
+                        `to ${MAX_PERIOD_HOURS}: 24 a day, 168 a week, 720 a month (30 days), ` +
+                        '8760 a year (365 days).',
                 ),
             description: z
                 .string()
