@@ -234,7 +234,9 @@ describe('DocsSearch, on the Mesub docs', () => {
 
     it.each([
         ['hasAccess', '/docs/access'],
-        ['plan_ended', '/reference/errors'],
+        // Fourth since the docs of 2026-11-09: two lifecycle sections and the
+        // subscription.ended event say plan_ended more, the errors page still has it.
+        ['plan_ended', '/reference/errors', 4],
         ['plan_ended', '/docs/lifecycle'],
         ['verify a webhook signature', '/docs/webhooks'],
         ['what happens when the plan ends', '/docs/lifecycle'],
@@ -257,10 +259,13 @@ describe('DocsSearch, on the Mesub docs', () => {
         ['renewal_upcomming', '/reference/webhooks/subscription-renewal-upcoming'],
         ['verify a webhok signature', '/docs/webhooks'],
         ['cancell a subscripton', '/reference/manage/cancel'],
-    ])(`finds "%s" on %s, in the first ${TOP}`, (query, page) => {
-        const pages = top(query).map((url) => url.split('#')[0]);
-        expect(pages).toContain(page);
-    });
+    ] as [string, string, number?][])(
+        `finds "%s" on %s, in the first ${TOP} or as said`,
+        (query, page, count) => {
+            const pages = top(query, count ?? TOP).map((url) => url.split('#')[0]);
+            expect(pages).toContain(page);
+        },
+    );
 
     it.each([
         ['what happens when the plan ends', '/docs/lifecycle#when-the-plan-has-an-end-date'],
