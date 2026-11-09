@@ -110,19 +110,18 @@ export const blockedReason = z
     .string()
     .nullable()
     .describe(
-        "Whose cause the block is, null with `blocked_since`. Five are the plan's own " +
-            'setup, for the merchant to fix: `puller_not_allowed` (Mesub was taken off ' +
-            "the plan's pullers on chain: add it back with the wallet that owns the " +
-            "plan), `receiver_not_allowed` (the receiving wallet is not in the plan's " +
-            'destinations: choose one that is), `receiver_account_missing` (the ' +
-            "receiving wallet has no token account for the plan's token: open one), " +
-            "`receiver_account_frozen` (the receiving wallet's token account is frozen by " +
-            "the token's issuer: choose another wallet), " +
-            '`mint_gone` (the token no longer exists: create a new plan with another ' +
-            'token). Access then lasts only the retry period the plan gives a late ' +
-            "payment. `mesub`: a cause on Mesub's side, nothing for the merchant to " +
-            'fix, and access lasts to the end of the period after the one paid for. Any ' +
-            'other value is one Mesub added since: report it as it is.',
+        "Whose cause the block is, null with `blocked_since`. Nine name the plan's setup: " +
+            "the merchant fixes `puller_not_allowed` (re-add Mesub to the plan's pullers from " +
+            'its owner wallet), `receiver_not_allowed` (choose a receiving wallet among the ' +
+            "plan's destinations), `receiver_account_missing` (open the receiving wallet's " +
+            'token account), `receiver_account_frozen`, `receiver_account_needs_memo`, ' +
+            '`receiver_account_confidential_only` (that account is frozen, requires a memo, ' +
+            'or takes confidential transfers only: lift it, or choose another wallet), ' +
+            '`mint_gone` (the token is closed: a new plan with another token); the ' +
+            "token's issuer lifts `mint_paused` and `mint_transfer_hook` (a transfer program " +
+            "Mesub does not support yet). Access then lasts the plan's retry period. " +
+            "`mesub`: Mesub's side, nothing for the merchant to fix; access lasts through the " +
+            'period after the one paid for. Any other was added since: report it as is.',
     );
 
 /** What a sentence says of a block, empty when there is none. */

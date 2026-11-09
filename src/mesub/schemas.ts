@@ -86,13 +86,20 @@ export const ACCESS_STATUSES = [
     'none',
 ] as const;
 export const PAYMENT_STATUSES = ['paid', 'late', 'none'] as const;
-/** Why charges are blocked: the first five are the merchant's own setup, `mesub` is ours. */
+/**
+ * Why charges are blocked: the first nine are the plan's own setup (the last
+ * two the token issuer's to lift), `mesub` is ours.
+ */
 export const BLOCKED_REASONS = [
     'puller_not_allowed',
     'receiver_not_allowed',
     'receiver_account_missing',
     'receiver_account_frozen',
+    'receiver_account_needs_memo',
+    'receiver_account_confidential_only',
     'mint_gone',
+    'mint_paused',
+    'mint_transfer_hook',
     'mesub',
 ] as const;
 /** Why a subscription ended, as `/v1/access` spells it. */

@@ -480,7 +480,12 @@ describe('the project tools, in detail', () => {
             'puller_not_allowed',
             'receiver_not_allowed',
             'receiver_account_missing',
+            'receiver_account_frozen',
+            'receiver_account_needs_memo',
+            'receiver_account_confidential_only',
             'mint_gone',
+            'mint_paused',
+            'mint_transfer_hook',
             'mesub',
         ])('returns the blocked reason %s as the API serves it', async (blocked_reason) => {
             api.answer(200, { ...answers.blockedAccessAnswer, blocked_reason });
@@ -619,7 +624,12 @@ describe('the project tools, in detail', () => {
                 'puller_not_allowed',
                 'receiver_not_allowed',
                 'receiver_account_missing',
+                'receiver_account_frozen',
+                'receiver_account_needs_memo',
+                'receiver_account_confidential_only',
                 'mint_gone',
+                'mint_paused',
+                'mint_transfer_hook',
                 'mesub',
             ])('returns the blocked reason %s as the API serves it', async (blockedReason) => {
                 for (const [tool, status, body, read] of served) {
