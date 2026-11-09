@@ -237,24 +237,29 @@ describe.each([
         expect(output('check_access')).toMatch(/does not change `status` nor `payment_status`/);
         expect(output('check_access')).toMatch(/ends is access, on `access_until`/);
         for (const fix of [
-            /`puller_not_allowed` \([^)]*add it back/,
-            /`receiver_not_allowed` \([^)]*choose one that is/,
-            /`receiver_account_missing` \([^)]*open one/,
-            /`mint_gone` \([^)]*create a new plan/,
+            /`puller_not_allowed` \([^)]*re-add Mesub/,
+            /`receiver_not_allowed` \([^)]*choose a receiving wallet/,
+            /`receiver_account_missing` \([^)]*open the receiving wallet's token account/,
+            /`receiver_account_frozen`, `receiver_account_needs_memo`, `receiver_account_confidential_only` \([^)]*choose another wallet/,
+            /`mint_gone` \([^)]*a new plan with another token/,
+            /issuer lifts `mint_paused` and `mint_transfer_hook`/,
             /`mesub`: [^.]*nothing for the merchant to fix/,
         ]) {
             expect(output('check_access')).toMatch(fix);
         }
+        expect(output('check_access')).toMatch(/Nine name the plan's setup/);
         // A subscription says its block wherever it is served, in the words of check_access.
         for (const name of ['list_subscriptions', 'get_subscription', 'retry_charge']) {
             expect(output(name), name).toMatch(/does not change `status`, the subscriber/);
             expect(output(name), name).toMatch(/Mesub keeps trying \(`due_at`\)/);
             expect(output(name), name).not.toMatch(/payment_status|next_charge_at/);
             for (const fix of [
-                /`puller_not_allowed` \([^)]*add it back/,
-                /`receiver_not_allowed` \([^)]*choose one that is/,
-                /`receiver_account_missing` \([^)]*open one/,
-                /`mint_gone` \([^)]*create a new plan/,
+                /`puller_not_allowed` \([^)]*re-add Mesub/,
+                /`receiver_not_allowed` \([^)]*choose a receiving wallet/,
+                /`receiver_account_missing` \([^)]*open the receiving wallet's token account/,
+                /`receiver_account_frozen`, `receiver_account_needs_memo`, `receiver_account_confidential_only` \([^)]*choose another wallet/,
+                /`mint_gone` \([^)]*a new plan with another token/,
+                /issuer lifts `mint_paused` and `mint_transfer_hook`/,
                 /`mesub`: [^.]*nothing for the merchant to fix/,
             ]) {
                 expect(output(name), name).toMatch(fix);
