@@ -119,6 +119,14 @@ function prepareAdvice({ code, status, walletUrl }: Refused): string | undefined
             'telling them failed charges then wait for a retry by hand.'
         );
     }
+    if (code === 'period_too_short') {
+        return (
+            "Nothing was prepared. The project's tier bills at most once a day: ask the " +
+            'merchant for a period of a day or more (`period_hours` 24 or more), then call ' +
+            'again. A shorter period needs the Business tier, which only the merchant can ' +
+            'choose, in the dashboard: no tool here changes the tier.'
+        );
+    }
     if (status === 403) {
         return (
             'Nothing was prepared. Relay that message to the merchant as it is: only they can ' +
