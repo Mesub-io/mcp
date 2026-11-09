@@ -1239,6 +1239,24 @@ describe('prepare_plan', () => {
             );
         });
 
+        it('asks for a day or more when the tier refuses the period, never a tier change by a tool', async () => {
+            const floor =
+                'Plans on the Free tier bill at most once a day: give this plan a period of a day or more.';
+            api.answer(403, refusal(403, 'period_too_short', floor));
+
+            const result = await call({ ...PRO, period_hours: 1 });
+
+            expect(text(result)).toBe(
+                `Mesub error period_too_short: ${floor} Nothing was prepared. The project's tier ` +
+                    'bills at most once a day: ask the merchant for a period of a day or more ' +
+                    '(`period_hours` 24 or more), then call again. A shorter period needs the ' +
+                    'Business tier, which only the merchant can choose, in the dashboard: no ' +
+                    'tool here changes the tier.',
+            );
+            expect(errorOf(result)).toMatchObject({ code: 'period_too_short', status: 403 });
+            expect(api.projectCalls()).toHaveLength(1);
+        });
+
         // The cap is the cause even when the call sent retries: leaving them out frees nothing.
         it('says nothing of retries when the plan cap refused a call that sent them', async () => {
             const ceiling = 'This project holds the 1 plan its tier allows.';
