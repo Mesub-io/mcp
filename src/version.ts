@@ -2,4 +2,4 @@
 export const SERVER_NAME = 'mesub-mcp';
 
 /** Kept in step with package.json by `test/version.spec.ts`. */
-export const VERSION = '0.2.3';
+export const VERSION = '0.2.4';
