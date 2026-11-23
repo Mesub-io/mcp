@@ -34,7 +34,23 @@ describe('the HTTP surface', () => {
                 status: 'ok',
                 name: SERVER_NAME,
                 version: VERSION,
+                release: null,
             });
+        });
+
+        it('answers the commit the image was built from, which CI waits for on dev', async () => {
+            const sha = 'b2987871f4c0e1d3a5b6c7d8e9f0a1b2c3d4e5f6';
+            const built = await startServer({ MESUB_API_URL: api.url, SENTRY_RELEASE: sha });
+            try {
+                expect(await (await fetch(`${built.url}/health`)).json()).toEqual({
+                    status: 'ok',
+                    name: SERVER_NAME,
+                    version: VERSION,
+                    release: sha,
+                });
+            } finally {
+                await built.stop();
+            }
         });
     });
 

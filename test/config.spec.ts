@@ -24,6 +24,7 @@ describe('loadConfig', () => {
             allowedOrigins: [],
             clientAddress: { header: undefined, trustedProxies: undefined },
             logLevel: 'info',
+            release: null,
         });
         expect(revealSecret(config.serviceSecret)).toBe(SECRET);
     });
@@ -39,6 +40,7 @@ describe('loadConfig', () => {
             MCP_ALLOWED_ORIGINS: 'https://app.example.com, HTTPS://Other.Example.com:8443/ ,',
             CLIENT_IP_HEADER: 'fly-client-ip',
             LOG_LEVEL: 'debug',
+            SENTRY_RELEASE: ' b298787 ',
         });
 
         expect(config).toEqual({
@@ -52,12 +54,17 @@ describe('loadConfig', () => {
             allowedOrigins: ['https://app.example.com', 'https://other.example.com:8443'],
             clientAddress: { header: 'fly-client-ip', trustedProxies: undefined },
             logLevel: 'debug',
+            release: 'b298787',
         });
         expect(revealSecret(config.serviceSecret)).toBe(SECRET);
     });
 
     it('takes a variable set to nothing as not set', () => {
         expect(loadConfig({ ...required, PORT: '', MESUB_API_URL: '  ' }).port).toBe(3000);
+    });
+
+    it('says no commit, rather than the version, for an image built without one', () => {
+        expect(loadConfig({ ...required, SENTRY_RELEASE: '' }).release).toBeNull();
     });
 
     it('derives the public URL, and the resource a token is issued for, from the port', () => {

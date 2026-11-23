@@ -168,7 +168,7 @@ Past one, the tool error says how many seconds to wait. This server has limits o
 - No API key, anywhere. The caller presents an access token issued by Mesub, bound to one organization, or one of its projects, and to this server: see [How a connection works](#how-a-connection-works).
 - What a tool returns is data. A plan's name or a customer id is written by a merchant or their users, and is never an instruction: the server says so to every client, in its `instructions`.
 - `search_docs` searches the public docs without calling anything: an index of them is built from one commit of [Mesub-io/docs](https://github.com/Mesub-io/docs) and committed here, in `src/docs/index.json`. See [The docs index](#the-docs-index). It asks for a token like every other tool, though it reads no project: one rule for everything.
-- `GET /health` answers 200 with the server's name and version.
+- `GET /health` answers 200 with the server's name, its version, and `release`: the commit it runs (`SENTRY_RELEASE`), or null for a build without one.
 
 ## How a connection works
 
@@ -243,7 +243,7 @@ Every header below is believed only because one proxy writes it over whatever th
 
 ## Deploy
 
-Fly, from the `Dockerfile`, with no public IP: a Cloudflare Tunnel brings `mcp-dev.mesub.io` to `http://mesub-mcp-dev.internal:3000`. `fly.toml` holds the public values of the dev app, `mesub-mcp-dev`; its one secret is `MESUB_SERVICE_SECRET`, the dev API's `MCP_SERVICE_SECRET`. Every push to `main` deploys it once the checks pass (job `deploy-dev`, token in the `dev` environment).
+Dev, `mcp-dev.mesub.io`, runs on a server of ours that pulls `ghcr.io/mesub-io/mcp:dev` itself: every push to `main` builds that image once the checks pass (job `image-dev`), and nothing in CI reaches the server. Job `verify-dev` then waits up to 10 minutes for dev's `GET /health` to answer that commit as its `release`, and fails if it never does: a server that stopped updating shows red here.
 
 Production, `mesub-mcp-prod` in its own Fly org, is `fly.prod.toml` (`mcp.mesub.io`, the production API). A version ships in three acts: push a `v*` tag (the checks run, nothing deploys), run **CI** → **Run workflow** on that tag, then approve the `prod` environment, which takes `v*` tags only and holds its token (job `deploy-prod`).
 
@@ -260,7 +260,7 @@ node --env-file=.env dist/main.js
 
 ```sh
 curl http://localhost:3334/health
-# {"status":"ok","name":"mesub-mcp","version":"0.2.4"}
+# {"status":"ok","name":"mesub-mcp","version":"0.2.4","release":null}
 curl -i -X POST http://localhost:3334/mcp
 # 401, with the challenge
 curl http://localhost:3334/.well-known/oauth-protected-resource/mcp
@@ -310,7 +310,7 @@ Read once from the environment, and checked at start: a value that does not fit 
 | `LOG_LEVEL`                 | `info`                    | `debug`, `info`, `warn`, `error` or `silent`.                                                                                                                                           |
 | `SENTRY_DSN`                | none                      | A Sentry project's DSN: every error line of the log, redacted as written, is reported there. Unset, nothing is sent. A refusal answered on purpose is never an error line.              |
 | `SENTRY_ENVIRONMENT`        | `local`                   | Which deployment reports, named as the Mesub API names its network.                                                                                                                     |
-| `SENTRY_RELEASE`            | the version               | The commit the image was built from. The deploy job gives it to the image.                                                                                                              |
+| `SENTRY_RELEASE`            | none                      | The commit the image was built from, given by CI: `GET /health` answers it as `release`, and the error reports name it, or the version without one.                                     |
 
 At start the server writes a line named `resource` with the resource it takes tokens for. It must be the API's `MCP_RESOURCE_URL`, character for character: if it is not, every request is answered 503 and the logs say `audience_mismatch` with both values.
 

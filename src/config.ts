@@ -28,6 +28,8 @@ export interface Config {
     /** Where the address a request counts as is read. */
     clientAddress: ClientAddressSource;
     logLevel: LogLevel;
+    /** The commit this process runs, as its image was built (`SENTRY_RELEASE`). Null without one. */
+    release: string | null;
     /** Where unexpected errors are reported (#54). Unset without SENTRY_DSN: nothing is sent. */
     errorReports?: ErrorReportsConfig;
 }
@@ -171,7 +173,8 @@ const schema = z.object({
             error: 'must be a short lowercase name, devnet or mainnet-beta',
         })
         .default('local'),
-    // Empty when the image was built without one: the version stands in.
+    // Empty when the image was built without one: /health says null, the
+    // error reports name the version.
     SENTRY_RELEASE: z
         .string()
         .optional()
@@ -268,6 +271,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
             trustedProxies,
         },
         logLevel: data.LOG_LEVEL,
+        release: data.SENTRY_RELEASE ?? null,
         ...(data.SENTRY_DSN !== undefined && {
             errorReports: {
                 dsn: data.SENTRY_DSN,
