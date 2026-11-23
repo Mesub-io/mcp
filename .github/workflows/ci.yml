@@ -107,6 +107,45 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
+  image-dev:
+    # The image dev runs from on hermes (#94): hermes pulls it from GHCR
+    # itself, so nothing here reaches hermes. It runs beside deploy-dev until
+    # dev leaves Fly.
+    needs: [quality, docs-index]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest # a public repository never runs on our own machines
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: image-mcp-dev
+      cancel-in-progress: false
+    env:
+      IMAGE: ghcr.io/mesub-io/mcp
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the dev image
+        run: >-
+          docker buildx build --pull --push
+          --build-arg SENTRY_RELEASE=${{ github.sha }}
+          --label org.opencontainers.image.source=https://github.com/Mesub-io/mcp
+          --label org.opencontainers.image.revision=${{ github.sha }}
+          --tag "$IMAGE:dev" --tag "$IMAGE:${{ github.sha }}"
+          .
+
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io
+
   deploy-prod:
     needs: [quality, docs-index]
     # Two acts on purpose (#59): a v* tag pushed, then this workflow run by
