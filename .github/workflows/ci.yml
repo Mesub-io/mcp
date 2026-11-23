@@ -66,51 +66,9 @@ jobs:
       # that commit of Mesub-io/docs, which is public, and needs no dependency.
       - run: node scripts/build-docs-index.mjs --check
 
-  # main only, once the checks pass: mcp-dev.mesub.io. A GitHub-hosted runner,
-  # which starts empty every time: nothing a branch ran is left beside the
-  # token.
-  deploy-dev:
-    needs: [quality, docs-index]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    # The environment holds FLY_API_TOKEN, scoped to mesub-mcp-dev, and
-    # releases it to main only.
-    environment:
-      name: dev
-      url: https://mcp-dev.mesub.io
-    # Deploys queue rather than cancel each other.
-    concurrency:
-      group: deploy-mesub-mcp-dev
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        with:
-          persist-credentials: false
-      - uses: superfly/flyctl-actions/setup-flyctl@fc53c09e1bc3be6f54706524e3b82c4f462f77be # 1.5
-        with:
-          version: 0.4.104
-      # --no-public-ips: reached only through the tunnel, and a plain deploy
-      # hands the app a public IP back because fly.toml declares an
-      # http_service. The /health check fails this step when the release
-      # cannot answer.
-      - name: Deploy to mesub-mcp-dev
-        run: flyctl deploy --remote-only --no-public-ips --build-arg SENTRY_RELEASE=${{ github.sha }}
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      # The release and the Machines' state, never the app's logs: this
-      # repository is public, and so are its runs. The logs are read with
-      # `fly logs`, by someone who may.
-      - name: Show the release state
-        if: failure()
-        run: flyctl status && flyctl releases | head -n 5
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
   image-dev:
     # The image dev runs from on hermes (#94): hermes pulls it from GHCR
-    # itself, so nothing here reaches hermes. It runs beside deploy-dev until
-    # dev leaves Fly.
+    # itself, so nothing here reaches hermes. verify-dev checks it did.
     needs: [quality, docs-index]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest # a public repository never runs on our own machines
@@ -145,6 +103,37 @@ jobs:
       - name: Log out of GHCR
         if: always()
         run: docker logout ghcr.io
+
+  # main only, after image-dev (#96): waits until mcp-dev.mesub.io runs this
+  # commit, so a hermes that stopped pulling shows red here. It reads a public
+  # page: no secret, no environment.
+  verify-dev:
+    needs: [image-dev]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest # a public repository never runs on our own machines
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    # A newer merge supersedes an older check.
+    concurrency:
+      group: verify-mcp-dev
+      cancel-in-progress: true
+    steps:
+      # Every 10 s for 10 minutes. A failed or non-JSON answer is "not yet",
+      # and only a commit's hex is ever printed, never the answer itself.
+      - name: Wait for dev to run this commit
+        run: |
+          deadline=$((SECONDS + 600))
+          while :; do
+            release=$(curl -fsS --max-time 10 https://mcp-dev.mesub.io/health 2>/dev/null |
+              python3 -c 'import json, re, sys; r = json.load(sys.stdin).get("release"); print(r if isinstance(r, str) and re.fullmatch("[0-9a-f]{40}", r) else "")' 2>/dev/null) || release=""
+            echo "dev runs ${release:-no readable commit}"
+            [ "$release" = "$GITHUB_SHA" ] && exit 0
+            [ "$SECONDS" -ge "$deadline" ] && break
+            sleep 10
+          done
+          echo "::error::dev still runs ${release:-no readable commit}, not $GITHUB_SHA: hermes did not pick up the commit"
+          exit 1
 
   deploy-prod:
     needs: [quality, docs-index]
