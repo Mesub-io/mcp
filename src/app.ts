@@ -103,7 +103,10 @@ export function createApp(dependencies: AppDependencies): App {
 
     const app = new Hono<{ Bindings: NodeBindings }>();
 
-    app.get('/health', (c) => c.json({ status: 'ok', name: SERVER_NAME, version: VERSION }));
+    // `release` says which commit runs: CI waits for it after building dev's image.
+    app.get('/health', (c) =>
+        c.json({ status: 'ok', name: SERVER_NAME, version: VERSION, release: config.release }),
+    );
 
     // RFC 9728, as the MCP authorization specification requires: where a client
     // learns which authorization server to go to. Public, and readable from
