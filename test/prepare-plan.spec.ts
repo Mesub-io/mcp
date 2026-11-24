@@ -645,6 +645,11 @@ describe('prepare_plan', () => {
                         'from To sign in the dashboard',
                 );
             }
+            // Backend #705: a plan paying another wallet is approved first. Said
+            // once, in the server's instructions: the tool list has a size budget.
+            expect(INSTRUCTIONS.replace(/\s+/g, ' ')).toContain(
+                'that wallet first approves where it pays by signing a message, then signs',
+            );
             expect(INSTRUCTIONS).not.toMatch(/signs it with\s+their own wallet/);
             for (const said of [description, inputs, outputs, sentence(await call(PRO))]) {
                 expect(said).not.toMatch(/own wallet|their wallet|wallet the merchant connected/);
