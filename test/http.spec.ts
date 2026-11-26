@@ -54,6 +54,14 @@ describe('the HTTP surface', () => {
         });
     });
 
+    it('keeps every crawler off every path, as plain text, without a token', async () => {
+        const response = await fetch(`${server.url}/robots.txt`);
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get('content-type')).toBe('text/plain; charset=UTF-8');
+        expect(await response.text()).toBe('User-agent: *\nDisallow: /\n');
+    });
+
     it('answers 404 in JSON anywhere else', async () => {
         const response = await fetch(`${server.url}/nope`);
         expect(response.status).toBe(404);
