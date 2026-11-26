@@ -14,7 +14,7 @@ It is a thin layer over the Mesub HTTP API. A tool is one call to that API and a
 
 ## Status
 
-Hosted by Mesub at `https://mcp.mesub.io/mcp`, against the production API: there is nothing to install and nothing to run on the merchant's side. A dev server runs against the dev API, for the team's tests: `https://mcp-dev.mesub.io/mcp`.
+Hosted by Mesub at `https://mcp.mesub.io/mcp`, against the production API: there is nothing to install and nothing to run on the merchant's side.
 
 What exists in this repository: the transport, authorization, the client for the Mesub API, and 24 tools. What it is tested against, on every push, is a stand-in for the Mesub API.
 
@@ -243,7 +243,7 @@ Every header below is believed only because one proxy writes it over whatever th
 
 ## Deploy
 
-Dev, `mcp-dev.mesub.io`, runs on a server of ours that pulls `ghcr.io/mesub-io/mcp:dev` itself: every push to `main` builds that image once the checks pass (job `image-dev`), and nothing in CI reaches the server. Job `verify-dev` then waits up to 10 minutes for dev's `GET /health` to answer that commit as its `release`, and fails if it never does: a server that stopped updating shows red here.
+Dev runs on a server of ours that pulls `ghcr.io/mesub-io/mcp:dev` itself: every push to `main` builds that image once the checks pass (job `image-dev`), and nothing in CI reaches the server. Job `verify-dev` then waits up to 10 minutes for dev's `GET /health` to answer that commit as its `release`, and fails if it never does: a server that stopped updating shows red here.
 
 Production, `mesub-mcp-prod` in its own Fly org, is `fly.prod.toml` (`mcp.mesub.io`, the production API). A version ships in three acts: push a `v*` tag (the checks run, nothing deploys), run **CI** → **Run workflow** on that tag, then approve the `prod` environment, which takes `v*` tags only and holds its token (job `deploy-prod`).
 
