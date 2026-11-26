@@ -86,8 +86,8 @@ function forbidden(message: string): Response {
 }
 
 /**
- * `GET /health`, the protected resource metadata, and the MCP endpoint at
- * `/mcp` behind its guards. Nothing else, and nothing but `/mcp` is protected:
+ * `GET /health`, `GET /robots.txt`, the protected resource metadata, and the
+ * MCP endpoint at `/mcp` behind its guards. Nothing else, and nothing but `/mcp` is protected:
  * every request to it needs a valid token, whatever its method or its body.
  */
 export function createApp(dependencies: AppDependencies): App {
@@ -107,6 +107,10 @@ export function createApp(dependencies: AppDependencies): App {
     app.get('/health', (c) =>
         c.json({ status: 'ok', name: SERVER_NAME, version: VERSION, release: config.release }),
     );
+
+    // Nothing here is a page to index: crawlers that followed the docs to
+    // `/mcp` got a 401 (#104). Cloudflare puts its managed lines above this.
+    app.get('/robots.txt', (c) => c.text('User-agent: *\nDisallow: /\n'));
 
     // RFC 9728, as the MCP authorization specification requires: where a client
     // learns which authorization server to go to. Public, and readable from
